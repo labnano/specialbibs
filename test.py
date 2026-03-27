@@ -4,38 +4,29 @@ Run from the parent directory: python -m specialbibs.test_simulation
 Or directly: python specialbibs/test_simulation.py
 """
 
-from specialbibs import SpecialBibs, set_simulation_mode
+from specialbibs import MeasurementContext, SpecialBibs, set_simulation_mode
 from specialbibs.instruments import K2400, PressureSystem
 
 # Enable simulation mode - no real instruments needed
 set_simulation_mode(True)
 
-# Create simulated instruments
 k2400_a = K2400(16)
 k2400_b = K2400(8)
-pressure_system = PressureSystem(10)
+pressure_system = PressureSystem() 
 
 
-def run(meas):
-    # First half: ramp voltage up, valve open
+def run(meas: MeasurementContext):
     if meas.time < 5:
         v = meas.map(0, 10, until=5)
         meas.set_once(pressure_system.valve, 1)
-    # Second half: ramp voltage down, valve closed
     else:
         v = meas.map(10, 0, since=5, until=10)
         meas.set_once(pressure_system.valve, 0)
 
-    # Set voltage on first Keithley
     k2400_a.voltage.set(v)
 
-    # Plot 1: Voltage setpoint vs measured voltage
     meas.save_and_plot(v, k2400_b.voltage)
-
-    # Plot 2: Current measurement
     meas.save_and_plot(k2400_a.current)
-
-    # Plot 3: Pressure reading
     meas.save_and_plot(pressure_system.pressure)
 
 

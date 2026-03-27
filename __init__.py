@@ -1,4 +1,4 @@
-from .specialbibs import SpecialBibs, MeasurementContext
+from .measurements import SpecialBibs, MeasurementContext
 from .instruments import (
     set_simulation_mode,
     is_simulation_mode,

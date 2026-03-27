@@ -167,6 +167,15 @@ wheels = [
 ]
 
 [[package]]
+name = "labjack-ljm"
+version = "1.23.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/50/393ea6095093c69b71446375499794940a1306a4765c64e3f0dfcc7768b6/labjack-ljm-1.23.0.tar.gz", hash = "sha256:9d47838c59a74468b81de348689c6c534214bb93ee5a99b91c94b291cd4a49c0", size = 20811, upload-time = "2023-12-04T22:33:42.83Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/0e/d9cc7e3115ce34008da045adda75b4f3f2ffe157fac878b6f60e71644d36/labjack_ljm-1.23.0-py2.py3-none-any.whl", hash = "sha256:88bca9fb2cfa2d57e5d17f495d86d2d2e929f5129b8ca4331987fc50abfee210", size = 21359, upload-time = "2023-12-04T22:33:41.764Z" },
+]
+
+[[package]]
 name = "matplotlib"
 version = "3.10.8"
 source = { registry = "https://pypi.org/simple" }
@@ -396,6 +405,7 @@ name = "specialbibs"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "labjack-ljm" },
     { name = "matplotlib" },
     { name = "np" },
     { name = "numpy" },
@@ -405,6 +415,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "labjack-ljm", specifier = ">=1.23.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "np", specifier = ">=1.0.2" },
     { name = "numpy", specifier = ">=2.4.3" },

@@ -24,20 +24,13 @@ class RealTimePlotter:
         self.plots: Dict[str, PlotData] = {}
         self.plot_order: List[str] = []  # Maintains order of plot creation
         self._thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
         self.lines: Dict[str, List] = {}
         self.initialized = False
         self._lock = threading.Lock()
 
     def start(self):
-        self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run_plot_loop, daemon=True)
-        self._thread.start()
+        self._run_plot_loop()
 
-    def stop(self):
-        self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=2.0)
 
     def add_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
         self.data_queue.put((plot_id, x, y_values))
@@ -46,7 +39,7 @@ class RealTimePlotter:
         import matplotlib.pyplot as plt
         import matplotlib.animation as animation
 
-        plt.ion()  # Enable interactive mode
+        #plt.ion()  # Enable interactive mode
 
         def update(_frame):
             while not self.data_queue.empty():
@@ -66,11 +59,11 @@ class RealTimePlotter:
         self.fig, self._axes = plt.subplots(1, 1, figsize=(10, 6))
         self.axes = [self._axes]  
 
-        _anim = animation.FuncAnimation(
+        anim = animation.FuncAnimation(
             self.fig, update, interval=50, blit=False, cache_frame_data=False
         )
-
-        plt.show(block=True)
+        plt.pause(0.1)
+        #plt.show(block=False)
 
     def _process_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
         with self._lock:
@@ -324,10 +317,10 @@ class MeasurementContext:
 class SpecialBibs:
     def __init__(
         self,
-        func: Callable,
-        duration: float,
-        sample_rate: float,
-        folder: str,
+        func: Optional[Callable] = None,
+        duration: float = 0,
+        sample_rate: float = 1,
+        folder: str = "output",
         plot: bool = True,
     ):
         """
@@ -357,7 +350,7 @@ class SpecialBibs:
 
     def _start(self):
         # Initialize plotter
-        if self._plot_enabled:
+        if self._plot_enabled and self.func is not None:
             self._plotter = RealTimePlotter()
 
         # Initialize measurement context
@@ -369,11 +362,36 @@ class SpecialBibs:
         self._meas_thread = threading.Thread(target=self._measurement_loop, daemon=True)
         self._meas_thread.start()
 
-        # Start plotter (runs in its own thread with matplotlib event loop)
+        from IPython.terminal.embed import InteractiveShellEmbed
+        from IPython.terminal.prompts import Prompts
+        from pygments.token import Token
+        from traitlets.config import Config
+        class ClassicPrompt(Prompts):
+            def in_prompt_tokens(self):
+                return [(Token.Prompt, '>>> ')]
+            def continuation_prompt_tokens(self, width=None,*, lineno=None, wrap_count=None):
+                return [(Token.Prompt, '... ')]
+
+        c = Config()
+        c.TerminalInteractiveShell.prompts_class = ClassicPrompt
+        c.TerminalInteractiveShell.separate_in = ''
+        c.TerminalInteractiveShell.banner1 = (
+            '------------ SpecialBibs ------------\n'
+            'Diga não ao MatLab. Viva a revolução!\n\n'
+        )
+        c.TerminalInteractiveShell.enable_tip = False
+        shell = InteractiveShellEmbed(config=c)
+        shell.enable_matplotlib()
+
         if self._plotter:
             self._plotter.start()
 
+        shell(stack_depth=3)
+        self.stop()  # Ensure measurement stops when shell exits
+
     def _measurement_loop(self):
+        if self.func is None:
+            return
         num_samples = int(self.duration * self.sample_rate)
         interval = 1.0 / self.sample_rate
 
@@ -416,45 +434,32 @@ class SpecialBibs:
             print(f"Measurement completed. Data saved to folder {self.folder}/")
 
     def stop(self):
-        """Stop the measurement"""
         self._stop_event.set()
         self._paused_event.set()  # Unpause to allow thread to exit
         if self._meas_thread:
             self._meas_thread.join(timeout=2.0)
-        if self._plotter:
-            self._plotter.stop()
 
     def pause(self):
-        """Pause the measurement"""
         self._paused_event.clear()
         print("Measurement paused")
 
     def resume(self):
-        """Resume the measurement"""
         self._paused_event.set()
         print("Measurement resumed")
 
     @property
     def is_running(self) -> bool:
-        """Check if measurement is still running"""
         return self._meas_thread is not None and self._meas_thread.is_alive()
 
     @property
     def is_completed(self) -> bool:
-        """Check if measurement completed normally"""
         return self._completed
 
     @property
     def current_time(self) -> float:
-        """Get current measurement time"""
         if self._meas_context:
             return self._meas_context.time
         return 0.0
-
-    def wait(self):
-        """Wait for measurement to complete"""
-        if self._meas_thread:
-            self._meas_thread.join()
 
     def __enter__(self):
         return self

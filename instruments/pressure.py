@@ -1,4 +1,3 @@
-import u6
 from .instruments import Channel, LabJackInstrument
 
 class PressureSystem(LabJackInstrument):

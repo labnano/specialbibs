@@ -2,50 +2,40 @@ Python interface for communicating with VISA instruments and LabJack.
 
 ## Example
 ```python
-from specialbibs import SpecialBibs, set_simulation_mode
+from specialbibs import SpecialBibs, MeasurementContext
 from specialbibs.instruments import K2400, PressureSystem
 
-# Enable simulation mode for testing without real instruments
-set_simulation_mode(True)
+k2400_a = K2400(19)
+k2400_b = K2400(20)
+pressure = PressureSystem()
 
-k2400_a = K2400(16)
-k2400_b = K2400(8)
-pressure_system = PressureSystem(10)
-
-def run(meas):
-    if meas.time < 5:
-        v = meas.map(0, 10, to=5)
-        meas.set_once(pressure_system.valve, 1)
+def loop(meas: MeasurementContext):
+    meas.once(k2400_b.voltage, 0.1)
+    if meas.time < 20:
+        v = meas.map(0, 1, until=20)
+        meas.once(pressure.sa, 1)
     else:
-        v = meas.map(10, 0, from_time=5, to=10)
-        meas.set_once(pressure_system.valve, 0)
+        v = meas.map(1, 0, since=20, until=40)
+        meas.once(pressure.sa, 0)
+
     k2400_a.voltage.set(v)
-    meas.save_and_plot(v, k2400_b.voltage)
+
+    meas.plot(('Set Voltage (v)', v), k2400_a.voltage)
+    meas.plot(k2400_b.voltage)
 
 
-# Measurement runs in background thread, plots in another thread
-# Main thread remains free for IPython interaction
-experiment = SpecialBibs(run,
-    duration=10.0,
+experiment = SpecialBibs(loop,
+    duration=40.0,
     sample_rate=20,
-    file="medida_1.txt",
-)
-
-# Optional: wait for completion
-# experiment.wait()
-
-# Or control the experiment interactively:
-# experiment.pause()
-# experiment.resume()
-# experiment.stop()
-# experiment.is_running
-# experiment.current_time
+    folder="simulated_measurement",
+    plot=True,
+) # This will drop you into a IPython shell where you can interact with the experiment while and after it's running. 
 ```
 
-## Features
+---
 
-- **Simulation Mode**: Test your measurement code without physical instruments
-- **Threaded Execution**: Measurement loop and plotting run in separate threads
-- **Real-time Plotting**: Data is plotted as it's collected using matplotlib animation
-- **Automatic Plot Identification**: Multiple `save_and_plot()` calls create separate plots automatically
-- **IPython Compatible**: Main thread stays free for interactive session
+For running without instruments connected, set the `is_simulated=True` inside `instruments/instruments.py`.
+
+Install this locally using `uv add --editable .`.
+Add the .venv to the `VIRTUAL_ENV` envinroment variable so that scripts can be created anywhere.
+

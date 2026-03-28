@@ -2,13 +2,11 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
-import math
 import weakref
 import os
 if os.name == 'nt':
     os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
 
-import u6
 rm = ResourceManager()
 is_simulated = True
 
@@ -45,6 +43,7 @@ class LabJackInstrument(Instrument):
         super().__init__()
         if is_simulated:
             return
+        import u6
         self.resource = u6.U6()
         self.resource.getCalibrationData()
         self.on_load()
@@ -110,6 +109,12 @@ class _InstrumentChannel:
         if args:
             return self.set(*args)
         return self.get()
+
+    def __repr__(self):
+        try:
+            return str(self.get())
+        except Exception:
+            return "<{} channel '{}'>".format(self._instance.__class__.__name__, self.channel.name)
 
     @property
     def value(self):

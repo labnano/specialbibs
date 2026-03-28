@@ -1,56 +1,51 @@
 from __future__ import annotations
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TypeVar
+from pyvisa import ResourceManager
+from pyvisa.resources import MessageBasedResource
 import weakref
 
-if TYPE_CHECKING:
-    from pyvisa.resources import Resource
+import os
+os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
 
-# Global simulation mode flag
-_simulation_mode = False
-
-
-def set_simulation_mode(enabled: bool = True):
-    """Enable or disable simulation mode globally"""
-    global _simulation_mode
-    _simulation_mode = enabled
-
-
-def is_simulation_mode() -> bool:
-    """Check if simulation mode is enabled"""
-    return _simulation_mode
-
-
-# Lazy load pyvisa only when needed
-_rm = None
-
-
-def _get_resource_manager():
-    global _rm
-    if _rm is None:
-        from pyvisa import ResourceManager
-
-        _rm = ResourceManager()
-    return _rm
-
+import u6
+rm = ResourceManager()
 
 class Instrument:
     def on_load(self):
-        raise NotImplementedError
+        pass
 
     def before_measure(self):
-        raise NotImplementedError
+        pass
 
 
 class VisaInstrument(Instrument):
     def __init__(self, address: str):
         super().__init__()
         self.address: str = address
-        self.resource: Optional["Resource"] = None
+        res = rm.open_resource(self.address)
+        assert isinstance(res, MessageBasedResource)
+        self.resource: MessageBasedResource = res
+        self.on_load()
 
-    def connect(self):
-        if not _simulation_mode:
-            self.resource = _get_resource_manager().open_resource(self.address)
 
+class LabJackInstrument(Instrument):
+    FIO0 = 0
+    FIO1 = 1
+    FIO2 = 2
+    FIO3 = 3
+    AIN3 = 3
+
+    def __init__(
+        self
+    ):
+        super().__init__()
+        self.resource = u6.U6()
+        self.resource.getCalibrationData()
+        self.on_load()
+
+    def disconnect(self):
+        if self.resource is not None:
+            self.resource.close()
 
 class Channel:
     def __init__(self, name: str, unit: Optional[str] = None):
@@ -60,9 +55,9 @@ class Channel:
         self._reader: Optional[Callable] = None
         self._writer: Optional[Callable] = None
 
-    def __get__(self, instance: Optional[Any], owner: Optional[type] = None):
+    def __get__(self, instance: Optional[Any], owner: Optional[type] = None) -> _InstrumentChannel:
         if instance is None:
-            return self
+            raise TypeError("Channel descript should only be accessed via the class instance")
 
         if instance not in self._cache:
             self._cache[instance] = _InstrumentChannel(self, instance)
@@ -113,22 +108,3 @@ class _InstrumentChannel:
     @value.setter
     def value(self, val):
         self.set(val)
-
-
-## Example usage:
-# class MyInstrument(VisaInstrument):
-#     voltage = Channel("Voltage", unit="V")
-
-#     @voltage.read
-#     def _read_voltage(self):
-#         return self.resource.query("MEAS:VOLT?")
-#
-#     @voltage.write
-#     def _set_voltage(self, value):
-#         self.resource.write(f"VOLT {value}")
-#
-#
-# instrument = MyInstrument("GPIB::1")
-# instrument.connect()
-# instrument.voltage.set(5)
-# print(instrument.voltage.get())

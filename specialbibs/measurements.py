@@ -286,6 +286,12 @@ class MeasurementContext:
             else:
                 resolved_values.append(float(v))
 
+        if len(resolved_values) < 2:
+            x_value = self.time
+        else:
+            x_value = resolved_values[0]
+            resolved_values = resolved_values[1:]
+
         # Save to file
         if self._file_handle:
             line = f"{self.time:.6f}\t" + "\t".join(f"{v:.6f}" for v in resolved_values)
@@ -294,7 +300,7 @@ class MeasurementContext:
 
         # Send to plotter
         if self._plotter:
-            self._plotter.add_data(plot_id, self.time, resolved_values)
+            self._plotter.add_data(plot_id, x_value, resolved_values)
 
     def reset(self):
         """Reset the once cache (useful for multiple runs)"""

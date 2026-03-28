@@ -1,32 +1,31 @@
 import inspect
+from io import TextIOWrapper
 import threading
 import time
 import queue
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 from dataclasses import dataclass, field
 
 
 @dataclass
 class PlotData:
-    """Data for a single plot, identified by its call location"""
-
     plot_id: str
     x_data: List[float] = field(default_factory=list)
     y_data: List[List[float]] = field(default_factory=list)
+    x_label: str = "Time (s)"
+    y_labels: List[str] = field(default_factory=list)
     num_series: int = 0
 
 
 class RealTimePlotter:
     def __init__(self):
-        self._data_queue: queue.Queue = queue.Queue()
-        self._plots: Dict[str, PlotData] = {}
-        self._plot_order: List[str] = []  # Maintains order of plot creation
+        self.data_queue: queue.Queue[tuple[str, tuple[str, float], List[tuple[str, float]]]] = queue.Queue()
+        self.plots: Dict[str, PlotData] = {}
+        self.plot_order: List[str] = []  # Maintains order of plot creation
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._fig = None
-        self._axes = None
-        self._lines: Dict[str, List] = {}
-        self._initialized = False
+        self.lines: Dict[str, List] = {}
+        self.initialized = False
         self._lock = threading.Lock()
 
     def start(self):
@@ -39,8 +38,8 @@ class RealTimePlotter:
         if self._thread:
             self._thread.join(timeout=2.0)
 
-    def add_data(self, plot_id: str, x: float, y_values: List[float]):
-        self._data_queue.put((plot_id, x, y_values))
+    def add_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
+        self.data_queue.put((plot_id, x, y_values))
 
     def _run_plot_loop(self):
         import matplotlib.pyplot as plt
@@ -48,84 +47,89 @@ class RealTimePlotter:
 
         plt.ion()  # Enable interactive mode
 
-        def update(frame):
-            while not self._data_queue.empty():
+        def update(_frame):
+            while not self.data_queue.empty():
                 try:
-                    plot_id, x, y_values = self._data_queue.get_nowait()
+                    plot_id, x, y_values = self.data_queue.get_nowait()
                     self._process_data(plot_id, x, y_values)
                 except queue.Empty:
                     break
 
             # Update plots if we have data
-            if self._plots and self._initialized:
+            if self.plots and self.initialized:
                 self._update_plot_lines()
 
             return []
 
         # Create initial empty figure
-        self._fig, self._axes = plt.subplots(1, 1, figsize=(10, 6))
-        self._axes = [self._axes]  
+        self.fig, self._axes = plt.subplots(1, 1, figsize=(10, 6))
+        self.axes = [self._axes]  
 
-        ani = animation.FuncAnimation(
-            self._fig, update, interval=50, blit=False, cache_frame_data=False
+        _anim = animation.FuncAnimation(
+            self.fig, update, interval=50, blit=False, cache_frame_data=False
         )
 
         plt.show(block=True)
 
-    def _process_data(self, plot_id: str, x: float, y_values: List[float]):
+    def _process_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
         with self._lock:
-            if plot_id not in self._plots:
-                self._plots[plot_id] = PlotData(
-                    plot_id=plot_id, num_series=len(y_values)
+            if plot_id not in self.plots:
+                self.plots[plot_id] = PlotData(
+                    plot_id=plot_id, num_series=len(y_values),
+                    x_label=x[0], y_labels=[v[0] for v in y_values]
                 )
-                self._plot_order.append(plot_id)
+                self.plot_order.append(plot_id)
                 self._reconfigure_subplots()
 
-            plot = self._plots[plot_id]
-            plot.x_data.append(x)
-            plot.y_data.append(y_values)
+            plot = self.plots[plot_id]
+            plot.x_data.append(x[1])
+            plot.y_data.append([v[1] for v in y_values])
 
     def _reconfigure_subplots(self):
-        import matplotlib.pyplot as plt
-
-        num_plots = len(self._plot_order)
+        num_plots = len(self.plot_order)
         if num_plots == 0:
             return
 
         # Clear and recreate subplots
-        self._fig.clear()
-        self._axes = self._fig.subplots(num_plots, 1, squeeze=False)
-        self._axes = [ax[0] for ax in self._axes]
+        self.fig.clear()
+        self.axes = self.fig.subplots(num_plots, 1, squeeze=False)
+        self.axes = [ax[0] for ax in self.axes]
 
         # Initialize lines for each plot
-        self._lines.clear()
+        self.lines.clear()
         colors = ["b", "r", "g", "c", "m", "y", "k"]
 
-        for idx, plot_id in enumerate(self._plot_order):
-            plot = self._plots[plot_id]
-            ax = self._axes[idx]
-            ax.set_xlabel("Time (s)")
-            ax.set_ylabel(f"Plot {idx + 1}")
+        for idx, plot_id in enumerate(self.plot_order):
+            plot = self.plots[plot_id]
+            ax = self.axes[idx]
+            ax.set_xlabel(plot.x_label)
+            y_labels = [l for l in plot.y_labels if l]
+            if len(y_labels) == 1:
+                ax.set_ylabel(y_labels[0])
             ax.grid(True, alpha=0.3)
 
-            self._lines[plot_id] = []
+            self.lines[plot_id] = []
             for series_idx in range(plot.num_series):
                 color = colors[series_idx % len(colors)]
-                (line,) = ax.plot([], [], f"{color}-", linewidth=1)
-                self._lines[plot_id].append(line)
+                if len(y_labels) > 1 and series_idx < len(plot.y_labels):
+                    (line,) = ax.plot([], [], f"{color}-", linewidth=1, label=plot.y_labels[series_idx])
+                else:
+                    (line,) = ax.plot([], [], f"{color}-", linewidth=1)
+                self.lines[plot_id].append(line)
 
-        self._fig.tight_layout()
-        self._initialized = True
+        self.fig.tight_layout()
+        self.initialized = True
 
     def _update_plot_lines(self):
         """Update all plot lines with current data"""
         with self._lock:
-            for plot_id in self._plot_order:
-                if plot_id not in self._lines:
+            for plot_id in self.plot_order:
+                if plot_id not in self.lines:
                     continue
 
-                plot = self._plots[plot_id]
-                lines = self._lines[plot_id]
+                plot = self.plots[plot_id]
+                lines = self.lines[plot_id]
+
 
                 if not plot.x_data:
                     continue
@@ -137,8 +141,8 @@ class RealTimePlotter:
                     line.set_data(plot.x_data[: len(y_series)], y_series)
 
                 # Auto-scale axes
-                ax_idx = self._plot_order.index(plot_id)
-                ax = self._axes[ax_idx]
+                ax_idx = self.plot_order.index(plot_id)
+                ax = self.axes[ax_idx]
                 ax.relim()
                 ax.autoscale_view()
 
@@ -156,13 +160,7 @@ class MeasurementContext:
         self._lock = threading.Lock()
         self._plotter = plotter
         self._file = file
-        self._file_handle = None
-        self._plot_call_counter: Dict[str, int] = {}  # Track call counts per iteration
-        self._current_iteration: int = 0
-
-    def _start_iteration(self, iteration: int):
-        self._current_iteration = iteration
-        self._plot_call_counter.clear()
+        self._file_handle: Optional[TextIOWrapper] = None
 
     def map(
         self,
@@ -195,7 +193,7 @@ class MeasurementContext:
         t_normalized = (self.time - since) / (until - since)
         return start + (end - start) * t_normalized
 
-    def set_once(
+    def once(
         self,
         operation: Union[Callable, Any],
         *args,
@@ -256,7 +254,35 @@ class MeasurementContext:
                 f"Operation {operation} is not callable and has no .set() method"
             )
 
-    def save_and_plot(self, *values: Any):
+    def _resolve_values(self, *values: Any) -> list[tuple[str, float]]:
+        # Resolve values (call .get() on instrument channels)
+        from specialbibs.instruments import _InstrumentChannel
+        resolved_values: list[tuple[str, Any]] = []
+        for v in values:
+            if isinstance(v, _InstrumentChannel):
+                resolved_values.append((f"{v.channel.name} ({v.channel.unit})", v.get()))
+            elif callable(v):
+                resolved_values.append((str(getattr(callable, '__name__', repr(callable))), v()))
+            elif hasattr(v, "get"):
+                resolved_values.append(('', v.get()))
+            elif isinstance(v, tuple):
+                resolved_values.append(v)
+            else:
+                resolved_values.append(('', float(v)))
+        return resolved_values
+
+
+
+    def save(self, *values: Any):
+        resolved_values = [v[1] for v in self._resolve_values(*values)]
+
+        if self._file_handle:
+            line = f"{self.time:.6f}\t" + "\t".join(f"{v:.6f}" for v in resolved_values)
+            self._file_handle.write(line + "\n")
+            self._file_handle.flush()
+
+
+    def plot(self, *values: Any):
         """
         Save values to file and plot them in real-time.
 
@@ -269,38 +295,20 @@ class MeasurementContext:
         """
         # Get unique plot ID based on call location
         plot_id = self._get_caller_key(depth=2)
-
-        # Track how many times this location has been called this iteration
-        with self._lock:
-            if plot_id not in self._plot_call_counter:
-                self._plot_call_counter[plot_id] = 0
-            self._plot_call_counter[plot_id] += 1
-
-        # Resolve values (call .get() on instrument channels)
-        resolved_values = []
-        for v in values:
-            if hasattr(v, "get"):
-                resolved_values.append(v.get())
-            elif callable(v):
-                resolved_values.append(v())
-            else:
-                resolved_values.append(float(v))
+        resolved_values = self._resolve_values(*values)
 
         if len(resolved_values) < 2:
-            x_value = self.time
+            x_value = ('Time (s)', self.time)
         else:
             x_value = resolved_values[0]
             resolved_values = resolved_values[1:]
 
-        # Save to file
-        if self._file_handle:
-            line = f"{self.time:.6f}\t" + "\t".join(f"{v:.6f}" for v in resolved_values)
-            self._file_handle.write(line + "\n")
-            self._file_handle.flush()
 
         # Send to plotter
         if self._plotter:
             self._plotter.add_data(plot_id, x_value, resolved_values)
+
+        self.save(*values)
 
     def reset(self):
         """Reset the once cache (useful for multiple runs)"""
@@ -333,7 +341,7 @@ class SpecialBibs:
 
         self._meas_thread: Optional[threading.Thread] = None
         self._plotter: Optional[RealTimePlotter] = None
-        self._meas_context: Optional[MeasurementContext] = None
+        #self._meas_context: Optional[MeasurementContext] = None
         self._stop_event = threading.Event()
         self._paused_event = threading.Event()
         self._paused_event.set()  # Not paused initially
@@ -382,7 +390,6 @@ class SpecialBibs:
                 t = i / self.sample_rate
 
                 self._meas_context.time = t
-                self._meas_context._start_iteration(i)
 
                 # Execute user function
                 self.func(self._meas_context)

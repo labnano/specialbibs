@@ -2,7 +2,8 @@ from .instruments import (
     Instrument,
     VisaInstrument,
     LabJackInstrument,
-    Channel
+    Channel,
+    _InstrumentChannel
 )
 from .keithley import K2400
 from .pressure import PressureSystem
@@ -14,4 +15,5 @@ __all__ = [
     "Channel",
     "K2400",
     "PressureSystem",
+    "_InstrumentChannel"
 ]

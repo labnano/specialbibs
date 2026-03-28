@@ -1,14 +1,16 @@
 from __future__ import annotations
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
+import math
 import weakref
-
 import os
-os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
+if os.name == 'nt':
+    os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
 
 import u6
 rm = ResourceManager()
+is_simulated = True
 
 class Instrument:
     def on_load(self):
@@ -21,6 +23,8 @@ class Instrument:
 class VisaInstrument(Instrument):
     def __init__(self, address: str):
         super().__init__()
+        if is_simulated:
+            return
         self.address: str = address
         res = rm.open_resource(self.address)
         assert isinstance(res, MessageBasedResource)
@@ -39,6 +43,8 @@ class LabJackInstrument(Instrument):
         self
     ):
         super().__init__()
+        if is_simulated:
+            return
         self.resource = u6.U6()
         self.resource.getCalibrationData()
         self.on_load()
@@ -79,6 +85,8 @@ class _InstrumentChannel:
         self._instance: Any = instance
 
     def get(self):
+        if is_simulated:
+            return 42.0
         if self.channel._reader is None:
             raise AttributeError(
                 "No getter defined for channel {} in instrument {}".format(
@@ -88,6 +96,8 @@ class _InstrumentChannel:
         return self.channel._reader(self._instance)
 
     def set(self, *args, **kwargs):
+        if is_simulated:
+            return
         if self.channel._writer is None:
             raise AttributeError(
                 "No setter defined for channel {} in instrument {}".format(

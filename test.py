@@ -1,23 +1,23 @@
-from specialbibs import SpecialBibs
+from specialbibs import SpecialBibs, MeasurementContext
 from specialbibs.instruments import K2400, PressureSystem
 
 k2400_a = K2400(19)
 k2400_b = K2400(20)
-pressure_system = PressureSystem()
+pressure = PressureSystem()
 
-def loop(meas):
-    meas.set_once(k2400_b.voltage, 0.1)
+def loop(meas: MeasurementContext):
+    meas.once(k2400_b.voltage, 0.1)
     if meas.time < 20:
         v = meas.map(0, 1, until=20)
-        #meas.set_once(pressure_system.sa, 1)
+        meas.once(pressure.sa, 1)
     else:
         v = meas.map(1, 0, since=20, until=40)
-        #meas.set_once(pressure_system.sa, 0)
+        meas.once(pressure.sa, 0)
 
     k2400_a.voltage.set(v)
 
-    meas.save_and_plot(v, k2400_a.voltage)
-    meas.save_and_plot(k2400_b.voltage)
+    meas.plot(v, k2400_a.voltage)
+    meas.plot(k2400_b.voltage)
 
 
 experiment = SpecialBibs(
@@ -26,7 +26,7 @@ experiment = SpecialBibs(
     sample_rate=20,
     file="simulated_measurement.txt",
     plot=True,
-)
+) # This will drop you into a IPython shell where you can interact with the experiment while and after it's running. 
 
 # Wait for measurement to complete
 experiment.wait()

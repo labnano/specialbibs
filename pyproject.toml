@@ -19,3 +19,7 @@ dependencies = [
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+

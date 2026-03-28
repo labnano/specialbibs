@@ -36,6 +36,6 @@ experiment = SpecialBibs(loop,
 
 For running without instruments connected, set the `is_simulated=True` inside `instruments/instruments.py`.
 
-Install this locally using `uv add --editable .`.
+Install this locally using `uv pip install -e .`.
 Add the .venv to the `VIRTUAL_ENV` envinroment variable so that scripts can be created anywhere.
 

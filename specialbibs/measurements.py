@@ -1,5 +1,6 @@
 import inspect
 from io import TextIOWrapper
+import os
 import threading
 import time
 import queue
@@ -152,15 +153,15 @@ class MeasurementContext:
         self,
         duration: float,
         plotter: Optional[RealTimePlotter] = None,
-        file: Optional[str] = None,
+        folder: Optional[str] = None,
     ):
         self.time: float = 0.0
         self.duration: float = duration
         self._completed_ops: Set[str] = set()
         self._lock = threading.Lock()
         self._plotter = plotter
-        self._file = file
-        self._file_handle: Optional[TextIOWrapper] = None
+        self._folder = folder
+        self._file_handlers: Dict[str, TextIOWrapper] = {}
 
     def map(
         self,
@@ -273,13 +274,17 @@ class MeasurementContext:
 
 
 
-    def save(self, *values: Any):
+    def _save(self, id: str, *values: Any):
         resolved_values = [v[1] for v in self._resolve_values(*values)]
 
-        if self._file_handle:
-            line = f"{self.time:.6f}\t" + "\t".join(f"{v:.6f}" for v in resolved_values)
-            self._file_handle.write(line + "\n")
-            self._file_handle.flush()
+        if id not in self._file_handlers:
+            self._file_handlers[id] = open(f"{self._folder}/measurement{len(self._file_handlers) + 1}.txt", "w")
+            line = "Time (s)\t" + "\t".join(f"{v[0]}" for v in self._resolve_values(*values)) + "\n"
+        else:
+            line = ""
+        line += f"{self.time:.6f}\t" + "\t".join(f"{v:.6f}" for v in resolved_values)
+        self._file_handlers[id].write(line + "\n")
+        self._file_handlers[id].flush()
 
 
     def plot(self, *values: Any):
@@ -308,7 +313,7 @@ class MeasurementContext:
         if self._plotter:
             self._plotter.add_data(plot_id, x_value, resolved_values)
 
-        self.save(*values)
+        self._save(plot_id, *values)
 
     def reset(self):
         """Reset the once cache (useful for multiple runs)"""
@@ -322,7 +327,7 @@ class SpecialBibs:
         func: Callable,
         duration: float,
         sample_rate: float,
-        file: str,
+        folder: str,
         plot: bool = True,
     ):
         """
@@ -336,7 +341,7 @@ class SpecialBibs:
         self.func = func
         self.duration = duration
         self.sample_rate = sample_rate
-        self.file = file
+        self.folder = folder
         self._plot_enabled = plot
 
         self._meas_thread: Optional[threading.Thread] = None
@@ -357,7 +362,7 @@ class SpecialBibs:
 
         # Initialize measurement context
         self._meas_context = MeasurementContext(
-            duration=self.duration, plotter=self._plotter, file=self.file
+            duration=self.duration, plotter=self._plotter, folder=self.folder
         )
 
         # Start measurement thread
@@ -373,8 +378,8 @@ class SpecialBibs:
         interval = 1.0 / self.sample_rate
 
         try:
-            # Open file for writing
-            self._meas_context._file_handle = open(self.file, "w")
+            # Create measurement folder if it doesn't exist
+            os.makedirs(self.folder, exist_ok=True)
 
             start_time = time.perf_counter()
 
@@ -406,9 +411,9 @@ class SpecialBibs:
             print(f"Measurement error: {e}")
             raise
         finally:
-            if self._meas_context._file_handle:
-                self._meas_context._file_handle.close()
-            print(f"Measurement completed. Data saved to {self.file}")
+            for file in self._meas_context._file_handlers.values():
+                file.close()
+            print(f"Measurement completed. Data saved to folder {self.folder}/")
 
     def stop(self):
         """Stop the measurement"""

@@ -16,7 +16,7 @@ def loop(meas: MeasurementContext):
 
     k2400_a.voltage.set(v)
 
-    meas.plot(v, k2400_a.voltage)
+    meas.plot(('Set Voltage (v)', v), k2400_a.voltage)
     meas.plot(k2400_b.voltage)
 
 
@@ -24,7 +24,7 @@ experiment = SpecialBibs(
     loop,
     duration=40.0,
     sample_rate=20,
-    file="simulated_measurement.txt",
+    folder="simulated_measurement",
     plot=True,
 ) # This will drop you into a IPython shell where you can interact with the experiment while and after it's running. 
 

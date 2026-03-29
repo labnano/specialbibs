@@ -1,145 +1,13 @@
 import inspect
 from io import TextIOWrapper
 import os
+import sys
 import threading
 import time
-import queue
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Optional, Set, Union
 
-
-@dataclass
-class PlotData:
-    plot_id: str
-    x_data: List[float] = field(default_factory=list)
-    y_data: List[List[float]] = field(default_factory=list)
-    x_label: str = "Time (s)"
-    y_labels: List[str] = field(default_factory=list)
-    num_series: int = 0
-
-
-class RealTimePlotter:
-    def __init__(self):
-        self.data_queue: queue.Queue[tuple[str, tuple[str, float], List[tuple[str, float]]]] = queue.Queue()
-        self.plots: Dict[str, PlotData] = {}
-        self.plot_order: List[str] = []  # Maintains order of plot creation
-        self._thread: Optional[threading.Thread] = None
-        self.lines: Dict[str, List] = {}
-        self.initialized = False
-        self._lock = threading.Lock()
-
-    def start(self):
-        self._run_plot_loop()
-
-
-    def add_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
-        self.data_queue.put((plot_id, x, y_values))
-
-    def _run_plot_loop(self):
-        import matplotlib.pyplot as plt
-        import matplotlib.animation as animation
-
-        #plt.ion()  # Enable interactive mode
-
-        def update(_frame):
-            while not self.data_queue.empty():
-                try:
-                    plot_id, x, y_values = self.data_queue.get_nowait()
-                    self._process_data(plot_id, x, y_values)
-                except queue.Empty:
-                    break
-
-            # Update plots if we have data
-            if self.plots and self.initialized:
-                self._update_plot_lines()
-
-            return []
-
-        # Create initial empty figure
-        self.fig, self._axes = plt.subplots(1, 1, figsize=(10, 6))
-        self.axes = [self._axes]  
-
-        anim = animation.FuncAnimation(
-            self.fig, update, interval=50, blit=False, cache_frame_data=False
-        )
-        plt.pause(0.1)
-        #plt.show(block=False)
-
-    def _process_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
-        with self._lock:
-            if plot_id not in self.plots:
-                self.plots[plot_id] = PlotData(
-                    plot_id=plot_id, num_series=len(y_values),
-                    x_label=x[0], y_labels=[v[0] for v in y_values]
-                )
-                self.plot_order.append(plot_id)
-                self._reconfigure_subplots()
-
-            plot = self.plots[plot_id]
-            plot.x_data.append(x[1])
-            plot.y_data.append([v[1] for v in y_values])
-
-    def _reconfigure_subplots(self):
-        num_plots = len(self.plot_order)
-        if num_plots == 0:
-            return
-
-        # Clear and recreate subplots
-        self.fig.clear()
-        self.axes = self.fig.subplots(num_plots, 1, squeeze=False)
-        self.axes = [ax[0] for ax in self.axes]
-
-        # Initialize lines for each plot
-        self.lines.clear()
-        colors = ["b", "r", "g", "c", "m", "y", "k"]
-
-        for idx, plot_id in enumerate(self.plot_order):
-            plot = self.plots[plot_id]
-            ax = self.axes[idx]
-            ax.set_xlabel(plot.x_label)
-            y_labels = [l for l in plot.y_labels if l]
-            if len(y_labels) == 1:
-                ax.set_ylabel(y_labels[0])
-            ax.grid(True, alpha=0.3)
-
-            self.lines[plot_id] = []
-            for series_idx in range(plot.num_series):
-                color = colors[series_idx % len(colors)]
-                if len(y_labels) > 1 and series_idx < len(plot.y_labels):
-                    (line,) = ax.plot([], [], f"{color}-", linewidth=1, label=plot.y_labels[series_idx])
-                else:
-                    (line,) = ax.plot([], [], f"{color}-", linewidth=1)
-                self.lines[plot_id].append(line)
-
-        self.fig.tight_layout()
-        self.initialized = True
-
-    def _update_plot_lines(self):
-        """Update all plot lines with current data"""
-        with self._lock:
-            for plot_id in self.plot_order:
-                if plot_id not in self.lines:
-                    continue
-
-                plot = self.plots[plot_id]
-                lines = self.lines[plot_id]
-
-
-                if not plot.x_data:
-                    continue
-
-                for series_idx, line in enumerate(lines):
-                    y_series = [
-                        y[series_idx] for y in plot.y_data if series_idx < len(y)
-                    ]
-                    line.set_data(plot.x_data[: len(y_series)], y_series)
-
-                # Auto-scale axes
-                ax_idx = self.plot_order.index(plot_id)
-                ax = self.axes[ax_idx]
-                ax.relim()
-                ax.autoscale_view()
-
+from IPython.core.autocall import IPyAutocall
+from .plotting import RealTimePlotter
 
 class MeasurementContext:
     def __init__(
@@ -217,6 +85,29 @@ class MeasurementContext:
         self._execute(operation, *args, **kwargs)
         return True
 
+    def plot(self, *values: Any):
+        # Get unique plot ID based on call location
+        plot_id = self._get_caller_key(depth=2)
+        resolved_values = self._resolve_values(*values)
+
+        if len(resolved_values) < 2:
+            x_value = ('Time (s)', self.time)
+        else:
+            x_value = resolved_values[0]
+            resolved_values = resolved_values[1:]
+
+
+        if self._plotter:
+            self._plotter.add_data(plot_id, x_value, resolved_values)
+
+        self._save(plot_id, *values)
+
+    def reset(self):
+        """Reset the once cache (useful for multiple runs)"""
+        with self._lock:
+            self._completed_ops.clear()
+
+
     def _get_caller_key(self, depth: int = 3) -> str:
         frame = inspect.currentframe()
         for _ in range(depth):
@@ -256,7 +147,7 @@ class MeasurementContext:
             if isinstance(v, _InstrumentChannel):
                 resolved_values.append((f"{v.channel.name} ({v.channel.unit})", v.get()))
             elif callable(v):
-                resolved_values.append((str(getattr(callable, '__name__', repr(callable))), v()))
+                resolved_values.append((str(getattr(v, '__name__', repr(v))), v()))
             elif hasattr(v, "get"):
                 resolved_values.append(('', v.get()))
             elif isinstance(v, tuple):
@@ -264,7 +155,6 @@ class MeasurementContext:
             else:
                 resolved_values.append(('', float(v)))
         return resolved_values
-
 
 
     def _save(self, id: str, *values: Any):
@@ -279,42 +169,8 @@ class MeasurementContext:
         self._file_handlers[id].write(line + "\n")
         self._file_handlers[id].flush()
 
-
-    def plot(self, *values: Any):
-        """
-        Save values to file and plot them in real-time.
-
-        Automatically identifies its position in the loop based on call location.
-        Multiple calls in the same loop iteration create separate plots.
-
-        Args:
-            *values: Values to save and plot. Can be raw values or
-                    instrument channels (will call .get() automatically)
-        """
-        # Get unique plot ID based on call location
-        plot_id = self._get_caller_key(depth=2)
-        resolved_values = self._resolve_values(*values)
-
-        if len(resolved_values) < 2:
-            x_value = ('Time (s)', self.time)
-        else:
-            x_value = resolved_values[0]
-            resolved_values = resolved_values[1:]
-
-
-        # Send to plotter
-        if self._plotter:
-            self._plotter.add_data(plot_id, x_value, resolved_values)
-
-        self._save(plot_id, *values)
-
-    def reset(self):
-        """Reset the once cache (useful for multiple runs)"""
-        with self._lock:
-            self._completed_ops.clear()
-
-
 class SpecialBibs:
+    current: 'Optional[SpecialBibs]' = None
     def __init__(
         self,
         func: Optional[Callable] = None,
@@ -331,6 +187,8 @@ class SpecialBibs:
             file: Output file path for data
             plot: Whether to enable real-time plotting (default: True)
         """
+        global current
+        SpecialBibs.current = self
         self.func = func
         self.duration = duration
         self.sample_rate = sample_rate
@@ -345,49 +203,34 @@ class SpecialBibs:
         self._paused_event.set()  # Not paused initially
         self._completed = False
 
+
         # Auto-start
         self._start()
 
     def _start(self):
-        # Initialize plotter
         if self._plot_enabled and self.func is not None:
             self._plotter = RealTimePlotter()
+            self._plotter.key_press_event = _on_mplt_keypress
 
-        # Initialize measurement context
-        self._meas_context = MeasurementContext(
-            duration=self.duration, plotter=self._plotter, folder=self.folder
-        )
+        self._start_measuremt_thread()
+
+        shell = _create_shell()
+
+        if self._plotter:
+            self._plotter.start()
+        
+        shell()
+        self.stop()  # Ensure measurement stops when shell exits
+
+
+
+    def _start_measuremt_thread(self):
+        self._meas_context = MeasurementContext(duration=self.duration, plotter=self._plotter, folder=self.folder)
 
         # Start measurement thread
         self._meas_thread = threading.Thread(target=self._measurement_loop, daemon=True)
         self._meas_thread.start()
 
-        from IPython.terminal.embed import InteractiveShellEmbed
-        from IPython.terminal.prompts import Prompts
-        from pygments.token import Token
-        from traitlets.config import Config
-        class ClassicPrompt(Prompts):
-            def in_prompt_tokens(self):
-                return [(Token.Prompt, '>>> ')]
-            def continuation_prompt_tokens(self, width=None,*, lineno=None, wrap_count=None):
-                return [(Token.Prompt, '... ')]
-
-        c = Config()
-        c.TerminalInteractiveShell.prompts_class = ClassicPrompt
-        c.TerminalInteractiveShell.separate_in = ''
-        c.TerminalInteractiveShell.banner1 = (
-            '------------ SpecialBibs ------------\n'
-            'Diga não ao MatLab. Viva a revolução!\n\n'
-        )
-        c.TerminalInteractiveShell.enable_tip = False
-        shell = InteractiveShellEmbed(config=c)
-        shell.enable_matplotlib()
-
-        if self._plotter:
-            self._plotter.start()
-
-        shell(stack_depth=3)
-        self.stop()  # Ensure measurement stops when shell exits
 
     def _measurement_loop(self):
         if self.func is None:
@@ -396,7 +239,6 @@ class SpecialBibs:
         interval = 1.0 / self.sample_rate
 
         try:
-            # Create measurement folder if it doesn't exist
             os.makedirs(self.folder, exist_ok=True)
 
             start_time = time.perf_counter()
@@ -423,7 +265,8 @@ class SpecialBibs:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
-            self._completed = True
+            if not self._stop_event.is_set():
+                self._completed = True
 
         except Exception as e:
             print(f"Measurement error: {e}")
@@ -431,7 +274,10 @@ class SpecialBibs:
         finally:
             for file in self._meas_context._file_handlers.values():
                 file.close()
-            print(f"Measurement completed. Data saved to folder {self.folder}/")
+            if self._completed:
+                print(f"Measurement completed. Data saved to folder {self.folder}/")
+            else:
+                print(f"Measurement aborted at time {self.current_time:.2f}s.\nPartial data may be saved on {self.folder}/")
 
     def stop(self):
         self._stop_event.set()
@@ -440,12 +286,32 @@ class SpecialBibs:
             self._meas_thread.join(timeout=2.0)
 
     def pause(self):
+        if not self.is_running:
+            return
         self._paused_event.clear()
-        print("Measurement paused")
+        print("Measurement paused at time {:.2f}s".format(self.current_time))
 
     def resume(self):
+        if not self.is_running:
+            return
         self._paused_event.set()
         print("Measurement resumed")
+
+    def toggle_pause(self):
+        if self._paused_event.is_set():
+            self.pause()
+        else:
+            self.resume()
+
+    def restart(self):
+        self.stop()
+        self._completed = False
+        self._paused_event.set()  # Ensure it's not paused
+        self._stop_event.clear()  # Clear stop event for new run
+        self._start_measuremt_thread()
+        if self._plotter:
+            self._plotter.clear()
+        print("Restarting measurement...")
 
     @property
     def is_running(self) -> bool:
@@ -461,8 +327,77 @@ class SpecialBibs:
             return self._meas_context.time
         return 0.0
 
-    def __enter__(self):
-        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+
+def _create_shell() -> Callable:
+    from IPython.terminal.embed import InteractiveShellEmbed
+    from IPython.terminal.prompts import Prompts
+    from pygments.token import Token
+    from traitlets.config import Config
+    class ClassicPrompt(Prompts):
+        def in_prompt_tokens(self):
+            return [(Token.Prompt, '>>> ')]
+        def continuation_prompt_tokens(self, width=None,*, lineno=None, wrap_count=None):
+            return [(Token.Prompt, '... ')]
+
+    c = Config()
+    c.TerminalInteractiveShell.prompts_class = ClassicPrompt
+    c.TerminalInteractiveShell.separate_in = ''
+    c.TerminalInteractiveShell.banner1 = (
+        '------------ SpecialBibs ------------\n'
+        'Diga não ao MatLab. Viva a revolução!\n\n'
+    )
+    c.TerminalInteractiveShell.enable_tip = False
+    c.InteractiveShellApp.exec_lines.append('%load_ext autoreload')
+    c.InteractiveShellApp.exec_lines.append('%autoreload 2')
+
+    shell = InteractiveShellEmbed(config=c)
+    shell.enable_matplotlib()
+
+    kb = shell.pt_app.key_bindings
+    @kb.add('escape', eager=True)  
+    @kb.add('c-c')  
+    def _(_):
+        if SpecialBibs.current:
+            SpecialBibs.current.stop()
+
+    @kb.add('space')  
+    def _(_):
+        if SpecialBibs.current:
+            SpecialBibs.current.toggle_pause()
+
+
+
+    if SpecialBibs.current is not None:
+        call_stack = sys._getframe(2).f_back
+        assert call_stack is not None
+        locals = call_stack.f_locals
+        locals['stop'] = _MeasurementAutocall(SpecialBibs.current.stop)
+        locals['pause'] = _MeasurementAutocall(SpecialBibs.current.pause)
+        locals['resume'] = _MeasurementAutocall(SpecialBibs.current.resume)
+        locals['restart'] = _MeasurementAutocall(SpecialBibs.current.restart)
+    else:
+        locals = None
+
+    def _run_shell():
+        shell(local_ns=locals)
+
+    return _run_shell
+
+def _on_mplt_keypress(event):
+    if event.key == 'ctrl+c' or event.key == 'escape':
+        if SpecialBibs.current:
+            SpecialBibs.current.stop()
+    elif event.key == ' ':
+        if SpecialBibs.current:
+            SpecialBibs.current.toggle_pause()
+
+
+class _MeasurementAutocall(IPyAutocall):
+    rewrite = False
+    def __init__(self, command: Callable):
+        self._command = command
+
+    def __call__(self):
+        self._command()
+

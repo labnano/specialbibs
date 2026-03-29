@@ -20,7 +20,7 @@ def loop(meas: MeasurementContext):
     meas.plot(k2400_b.voltage)
 
 
-experiment = SpecialBibs(loop,
+SpecialBibs(loop,
     duration=40.0,
     sample_rate=20,
     folder="simulated_measurement",

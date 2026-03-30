@@ -211,6 +211,7 @@ class SpecialBibs:
         if self._plot_enabled and self.func is not None:
             self._plotter = RealTimePlotter()
             self._plotter.key_press_event = _on_mplt_keypress
+            self._plotter.close_event = _on_mplt_close
 
         self._start_measuremt_thread()
 
@@ -244,11 +245,10 @@ class SpecialBibs:
             start_time = time.perf_counter()
 
             for i in range(num_samples):
-                if self._stop_event.is_set():
-                    break
-
                 # Wait if paused
                 self._paused_event.wait()
+                if self._stop_event.is_set():
+                    break
 
                 # Calculate target time and current time
                 target_time = i * interval
@@ -256,8 +256,13 @@ class SpecialBibs:
 
                 self._meas_context.time = t
 
-                # Execute user function
-                self.func(self._meas_context)
+                try:
+                    # Execute user function
+                    self.func(self._meas_context)
+                except Exception as e:
+                    print(f"Error during measurement: {e}")
+                    self.pause()
+                    continue
 
                 # Sleep to maintain sample rate
                 elapsed = time.perf_counter() - start_time
@@ -310,7 +315,7 @@ class SpecialBibs:
         self._stop_event.clear()  # Clear stop event for new run
         self._start_measuremt_thread()
         if self._plotter:
-            self._plotter.clear()
+            self._plotter.restart()
         print("Restarting measurement...")
 
     @property
@@ -391,6 +396,10 @@ def _on_mplt_keypress(event):
     elif event.key == ' ':
         if SpecialBibs.current:
             SpecialBibs.current.toggle_pause()
+
+def _on_mplt_close(event):
+    if SpecialBibs.current:
+        SpecialBibs.current.stop()
 
 
 class _MeasurementAutocall(IPyAutocall):

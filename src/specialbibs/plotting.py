@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
-    from specialbibs.measurements import SpecialBibs
+    from matplotlib.animation import FuncAnimation
 
 
 PLOT_COLORS = ["b", "r", "g", "c", "m", "y", "k"]
@@ -25,11 +25,12 @@ class RealTimePlotter:
         self.data_queue: queue.Queue[tuple[str, tuple[str, float], List[tuple[str, float]]]] = queue.Queue()
         self.plots: Dict[str, PlotData] = {}
         self.plot_order: List[str] = []  # Maintains order of plot creation
-        self._thread: Optional[threading.Thread] = None
         self.lines: Dict[str, List] = {}
         self.initialized = False
-        self._lock = threading.Lock()
         self.key_press_event: Optional[Callable] = None
+        self._anim: Optional['FuncAnimation'] = None
+        self.close_event: Optional[Callable] = None
+        self._close_cid: Optional[int] = None
 
     def start(self):
         self._run_plot_loop()
@@ -38,21 +39,34 @@ class RealTimePlotter:
     def add_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
         self.data_queue.put((plot_id, x, y_values))
 
-    def clear(self):
-        with self._lock:
-            self.plots.clear()
-            self.plot_order.clear()
-            self.lines.clear()
-            self.initialized = False
-            if hasattr(self, 'fig'):
-                self.fig.clf()
-                self.axes = []
+    def restart(self):
+        import matplotlib.pyplot as plt
+        import matplotlib._pylab_helpers as pylab_helpers
+        self.data_queue.queue.clear()
+        self.initialized = False
+        self.plot_order.clear()
+        self.plots.clear()
+        self.lines.clear()
+        if self.fig and self._close_cid:
+            self.fig.canvas.mpl_disconnect(self._close_cid)
+        try:
+            if self._anim:
+                self._anim.pause()
+        except:
+            pass
+        del self._anim
 
+        if hasattr(self, 'fig') and self.fig is not None:
+            plt.close(self.fig)
+
+        self._run_plot_loop()
+
+            
     def _run_plot_loop(self):
         import matplotlib.pyplot as plt
         import matplotlib.animation as animation
 
-        #plt.ion()  # Enable interactive mode
+        plt.ion()  # Enable interactive mode
 
         def update(_frame):
             while not self.data_queue.empty():
@@ -75,25 +89,27 @@ class RealTimePlotter:
         if self.key_press_event:
             self.fig.canvas.mpl_connect('key_press_event', self.key_press_event)
 
-        anim = animation.FuncAnimation(
+        if self.close_event:
+            self._close_cid = self.fig.canvas.mpl_connect('close_event', self.close_event)
+
+        self._anim = animation.FuncAnimation(
             self.fig, update, interval=ANIMATION_INTERVAL_MS, blit=False, cache_frame_data=False
         )
         plt.pause(0.1)
         #plt.show(block=False)
 
     def _process_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
-        with self._lock:
-            if plot_id not in self.plots:
-                self.plots[plot_id] = PlotData(
-                    plot_id=plot_id, num_series=len(y_values),
-                    x_label=x[0], y_labels=[v[0] for v in y_values]
-                )
-                self.plot_order.append(plot_id)
-                self._reconfigure_subplots()
+        if plot_id not in self.plots:
+            self.plots[plot_id] = PlotData(
+                plot_id=plot_id, num_series=len(y_values),
+                x_label=x[0], y_labels=[v[0] for v in y_values]
+            )
+            self.plot_order.append(plot_id)
+            self._reconfigure_subplots()
 
-            plot = self.plots[plot_id]
-            plot.x_data.append(x[1])
-            plot.y_data.append([v[1] for v in y_values])
+        plot = self.plots[plot_id]
+        plot.x_data.append(x[1])
+        plot.y_data.append([v[1] for v in y_values])
 
     def _reconfigure_subplots(self):
         num_plots = len(self.plot_order)
@@ -131,28 +147,27 @@ class RealTimePlotter:
 
     def _update_plot_lines(self):
         """Update all plot lines with current data"""
-        with self._lock:
-            for plot_id in self.plot_order:
-                if plot_id not in self.lines:
-                    continue
+        for plot_id in self.plot_order:
+            if plot_id not in self.lines:
+                continue
 
-                plot = self.plots[plot_id]
-                lines = self.lines[plot_id]
+            plot = self.plots[plot_id]
+            lines = self.lines[plot_id]
 
 
-                if not plot.x_data:
-                    continue
+            if not plot.x_data:
+                continue
 
-                for series_idx, line in enumerate(lines):
-                    y_series = [
-                        y[series_idx] for y in plot.y_data if series_idx < len(y)
-                    ]
-                    line.set_data(plot.x_data[: len(y_series)], y_series)
+            for series_idx, line in enumerate(lines):
+                y_series = [
+                    y[series_idx] for y in plot.y_data if series_idx < len(y)
+                ]
+                line.set_data(plot.x_data[: len(y_series)], y_series)
 
-                # Auto-scale axes
-                ax_idx = self.plot_order.index(plot_id)
-                ax = self.axes[ax_idx]
-                ax.relim()
-                ax.autoscale_view()
+            # Auto-scale axes
+            ax_idx = self.plot_order.index(plot_id)
+            ax = self.axes[ax_idx]
+            ax.relim()
+            ax.autoscale_view()
 
 

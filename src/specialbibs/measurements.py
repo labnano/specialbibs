@@ -3,6 +3,7 @@ from io import TextIOWrapper
 import os
 import sys
 import threading
+from datetime import datetime
 import time
 from typing import Any, Callable, Dict, Optional, Set, Union
 
@@ -178,6 +179,7 @@ class SpecialBibs:
         sample_rate: float = 1,
         folder: str = "output",
         plot: bool = True,
+        on_stop: Optional[Callable] = None,
     ):
         """
         Args:
@@ -190,9 +192,11 @@ class SpecialBibs:
         global current
         SpecialBibs.current = self
         self.func = func
+        self.on_stop = on_stop
         self.duration = duration
         self.sample_rate = sample_rate
-        self.folder = folder
+        self._folder = folder
+        self.folder = self._folder + '/' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         self._plot_enabled = plot
 
         self._meas_thread: Optional[threading.Thread] = None
@@ -289,6 +293,8 @@ class SpecialBibs:
         self._paused_event.set()  # Unpause to allow thread to exit
         if self._meas_thread:
             self._meas_thread.join(timeout=2.0)
+        if self.on_stop:
+            self.on_stop()
 
     def pause(self):
         if not self.is_running:
@@ -313,6 +319,7 @@ class SpecialBibs:
         self._completed = False
         self._paused_event.set()  # Ensure it's not paused
         self._stop_event.clear()  # Clear stop event for new run
+        self.folder = self._folder + '/' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         self._start_measuremt_thread()
         if self._plotter:
             self._plotter.restart()

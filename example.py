@@ -1,3 +1,4 @@
+from datetime import datetime
 from specialbibs import SpecialBibs, MeasurementContext
 from specialbibs.instruments import K2400, PressureSystem
 
@@ -23,6 +24,6 @@ def loop(meas: MeasurementContext):
 SpecialBibs(loop,
     duration=40.0,
     sample_rate=20,
-    folder="simulated_measurement",
+    folder=f"medidas",
     plot=True,
 ) # This will drop you into a IPython shell where you can interact with the experiment while and after it's running. 

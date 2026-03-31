@@ -2,6 +2,7 @@ import threading
 import queue
 from typing import Callable, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
+import numpy as np
 
 if TYPE_CHECKING:
     from matplotlib.animation import FuncAnimation
@@ -10,11 +11,12 @@ if TYPE_CHECKING:
 PLOT_COLORS = ["b", "r", "g", "c", "m", "y", "k"]
 ANIMATION_INTERVAL_MS = 50
 
+
 @dataclass
 class PlotData:
     plot_id: str
-    x_data: List[float] = field(default_factory=list)
-    y_data: List[List[float]] = field(default_factory=list)
+    x_data: np.ndarray = field(default_factory=lambda: np.array([]))
+    y_data: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
     x_label: str = "Time (s)"
     y_labels: List[str] = field(default_factory=list)
     num_series: int = 0
@@ -22,26 +24,31 @@ class PlotData:
 
 class RealTimePlotter:
     def __init__(self):
-        self.data_queue: queue.Queue[tuple[str, tuple[str, float], List[tuple[str, float]]]] = queue.Queue()
+        self.data_queue: queue.Queue[
+            tuple[str, tuple[str, float], List[tuple[str, float]]]
+        ] = queue.Queue()
         self.plots: Dict[str, PlotData] = {}
-        self.plot_order: List[str] = []  # Maintains order of plot creation
+        self.plot_order: List[str] = []
+        self.plot_id_to_index: Dict[str, int] = {}
         self.lines: Dict[str, List] = {}
         self.initialized = False
         self.key_press_event: Optional[Callable] = None
-        self._anim: Optional['FuncAnimation'] = None
+        self._anim: Optional["FuncAnimation"] = None
         self.close_event: Optional[Callable] = None
         self._close_cid: Optional[int] = None
 
     def start(self):
         self._run_plot_loop()
 
-
-    def add_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
+    def add_data(
+        self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]
+    ):
         self.data_queue.put((plot_id, x, y_values))
 
     def restart(self):
         import matplotlib.pyplot as plt
         import matplotlib._pylab_helpers as pylab_helpers
+
         self.data_queue.queue.clear()
         self.initialized = False
         self.plot_order.clear()
@@ -56,12 +63,11 @@ class RealTimePlotter:
             pass
         del self._anim
 
-        if hasattr(self, 'fig') and self.fig is not None:
+        if hasattr(self, "fig") and self.fig is not None:
             plt.close(self.fig)
 
         self._run_plot_loop()
 
-            
     def _run_plot_loop(self):
         import matplotlib.pyplot as plt
         import matplotlib.animation as animation
@@ -69,7 +75,7 @@ class RealTimePlotter:
         plt.ion()  # Enable interactive mode
 
         def update(_frame):
-            while not self.data_queue.empty():
+            while True:
                 try:
                     plot_id, x, y_values = self.data_queue.get_nowait()
                     self._process_data(plot_id, x, y_values)
@@ -87,29 +93,43 @@ class RealTimePlotter:
         self.axes = [self._axes]
 
         if self.key_press_event:
-            self.fig.canvas.mpl_connect('key_press_event', self.key_press_event)
+            self.fig.canvas.mpl_connect("key_press_event", self.key_press_event)
 
         if self.close_event:
-            self._close_cid = self.fig.canvas.mpl_connect('close_event', self.close_event)
+            self._close_cid = self.fig.canvas.mpl_connect(
+                "close_event", self.close_event
+            )
 
         self._anim = animation.FuncAnimation(
-            self.fig, update, interval=ANIMATION_INTERVAL_MS, blit=False, cache_frame_data=False
+            self.fig,
+            update,
+            interval=ANIMATION_INTERVAL_MS,
+            blit=True,
+            cache_frame_data=False,
         )
         plt.pause(0.1)
-        #plt.show(block=False)
+        # plt.show(block=False)
 
-    def _process_data(self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]):
+    def _process_data(
+        self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]
+    ):
         if plot_id not in self.plots:
             self.plots[plot_id] = PlotData(
-                plot_id=plot_id, num_series=len(y_values),
-                x_label=x[0], y_labels=[v[0] for v in y_values]
+                plot_id=plot_id,
+                num_series=len(y_values),
+                x_label=x[0],
+                y_labels=[v[0] for v in y_values],
             )
             self.plot_order.append(plot_id)
             self._reconfigure_subplots()
 
         plot = self.plots[plot_id]
-        plot.x_data.append(x[1])
-        plot.y_data.append([v[1] for v in y_values])
+        plot.x_data = np.append(plot.x_data, x[1])
+        y_values_array = np.array([v[1] for v in y_values])
+        if plot.y_data.size == 0:
+            plot.y_data = y_values_array.reshape(1, -1)
+        else:
+            plot.y_data = np.vstack([plot.y_data, y_values_array])
 
     def _reconfigure_subplots(self):
         num_plots = len(self.plot_order)
@@ -137,13 +157,20 @@ class RealTimePlotter:
             for series_idx in range(plot.num_series):
                 color = PLOT_COLORS[series_idx % len(PLOT_COLORS)]
                 if len(y_labels) > 1 and series_idx < len(plot.y_labels):
-                    (line,) = ax.plot([], [], f"{color}-", linewidth=1, label=plot.y_labels[series_idx])
+                    (line,) = ax.plot(
+                        [],
+                        [],
+                        f"{color}-",
+                        linewidth=1,
+                        label=plot.y_labels[series_idx],
+                    )
                 else:
                     (line,) = ax.plot([], [], f"{color}-", linewidth=1)
                 self.lines[plot_id].append(line)
 
         self.fig.tight_layout()
         self.initialized = True
+        self.plot_id_to_index = {pid: idx for idx, pid in enumerate(self.plot_order)}
 
     def _update_plot_lines(self):
         """Update all plot lines with current data"""
@@ -154,20 +181,15 @@ class RealTimePlotter:
             plot = self.plots[plot_id]
             lines = self.lines[plot_id]
 
-
-            if not plot.x_data:
+            if plot.x_data.size == 0:
                 continue
 
             for series_idx, line in enumerate(lines):
-                y_series = [
-                    y[series_idx] for y in plot.y_data if series_idx < len(y)
-                ]
-                line.set_data(plot.x_data[: len(y_series)], y_series)
+                y_series = plot.y_data[:, series_idx]
+                line.set_data(plot.x_data, y_series)
 
             # Auto-scale axes
-            ax_idx = self.plot_order.index(plot_id)
+            ax_idx = self.plot_id_to_index[plot_id]
             ax = self.axes[ax_idx]
             ax.relim()
             ax.autoscale_view()
-
-

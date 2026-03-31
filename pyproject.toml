@@ -23,3 +23,8 @@ typeCheckingMode = "standard"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[dependency-groups]
+dev = [
+    "py-spy>=0.4.1",
+]
+

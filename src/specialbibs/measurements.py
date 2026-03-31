@@ -364,7 +364,7 @@ def _create_shell() -> Callable:
     c.InteractiveShellApp.exec_lines.append('%autoreload 2')
 
     shell = InteractiveShellEmbed(config=c)
-    shell.enable_matplotlib()
+    #shell.enable_matplotlib()
 
     kb = shell.pt_app.key_bindings
     @kb.add('escape', eager=True)  

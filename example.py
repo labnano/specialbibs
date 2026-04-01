@@ -1,4 +1,3 @@
-from datetime import datetime
 from specialbibs import SpecialBibs, MeasurementContext
 from specialbibs.instruments import K2400, PressureSystem
 
@@ -7,18 +6,18 @@ k2400_b = K2400(20)
 pressure = PressureSystem()
 
 def loop(meas: MeasurementContext):
-    meas.once(k2400_b.voltage, 0.1)
+    #meas.once(k2400_b.voltage, 0.1)
     if meas.time < 20:
         v = meas.map(0, 1, until=20)
-        meas.once(pressure.sa, 1)
+        #meas.once(pressure.sa, 1)
     else:
         v = meas.map(1, 0, since=20, until=40)
-        meas.once(pressure.sa, 0)
+        #meas.once(pressure.sa, 0)
 
-    k2400_a.voltage.set(v)
+    #k2400_a.voltage.set(v)
 
-    meas.plot(('Set Voltage (v)', v), k2400_a.voltage)
-    meas.plot(k2400_b.voltage)
+    meas.plot(('Set Voltage (v)', v), k2400_b.voltage)
+    meas.plot(pressure.sensor)
 
 
 SpecialBibs(loop,

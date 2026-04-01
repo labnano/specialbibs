@@ -14,7 +14,7 @@ class PressureSystem(LabJackInstrument):
     @sensor.read
     def _read_sensor(self) -> int:
         # Nao precisa de passar o canal GND. O 199 só era usado pra falar que a medida n é diferencial
-        return self.resource.getAIN(positiveChannel=3, resolutionIndex=12, settlingFactor=0, differential=False)
+        return self.resource.getAIN(positiveChannel=3, resolutionIndex=0, settlingFactor=0, differential=False)
 
     @sg.write
     def _set_sg(self, val: int):

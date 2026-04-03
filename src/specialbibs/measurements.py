@@ -13,16 +13,18 @@ from .plotting import RealTimePlotter
 class MeasurementContext:
     def __init__(
         self,
-        duration: float,
+        duration: Optional[float],
         plotter: Optional[RealTimePlotter] = None,
         folder: Optional[str] = None,
+        stop: Optional[Callable] = None,
     ):
         self.time: float = 0.0
-        self.duration: float = duration
+        self.duration: Optional[float] = duration
         self._completed_ops: Set[str] = set()
         self._lock = threading.Lock()
         self._plotter = plotter
         self._folder = folder
+        self._stop = stop if stop is not None else lambda: None
         self._file_handlers: Dict[str, TextIOWrapper] = {}
 
     def map(
@@ -45,6 +47,8 @@ class MeasurementContext:
             Interpolated value based on current time
         """
         if until is None:
+            if self.duration is None:
+                raise ValueError("Until must be specified if measurement duration is not set")
             until = self.duration
 
         if self.time < since:
@@ -175,7 +179,7 @@ class SpecialBibs:
     def __init__(
         self,
         func: Optional[Callable] = None,
-        duration: float = 0,
+        duration: Optional[float] = None,
         sample_rate: float = 1,
         folder: str = "output",
         plot: bool = True,
@@ -230,7 +234,7 @@ class SpecialBibs:
 
 
     def _start_measuremt_thread(self):
-        self._meas_context = MeasurementContext(duration=self.duration, plotter=self._plotter, folder=self.folder)
+        self._meas_context = MeasurementContext(duration=self.duration, plotter=self._plotter, folder=self.folder, stop=self._soft_stop)
 
         # Start measurement thread
         self._meas_thread = threading.Thread(target=self._measurement_loop, daemon=True)
@@ -240,7 +244,7 @@ class SpecialBibs:
     def _measurement_loop(self):
         if self.func is None:
             return
-        num_samples = int(self.duration * self.sample_rate)
+        num_samples = int(self.duration * self.sample_rate) if self.duration else None
         interval = 1.0 / self.sample_rate
 
         try:
@@ -248,7 +252,10 @@ class SpecialBibs:
 
             start_time = time.perf_counter()
 
-            for i in range(num_samples):
+            i = 0
+            while True:
+                if (self.duration is not None) and (i >= (num_samples or 0)):
+                    break
                 # Wait if paused
                 self._paused_event.wait()
                 if self._stop_event.is_set():
@@ -274,6 +281,8 @@ class SpecialBibs:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
+                i += 1
+
             if not self._stop_event.is_set():
                 self._completed = True
 
@@ -287,6 +296,10 @@ class SpecialBibs:
                 print(f"Measurement completed. Data saved to folder {self.folder}/")
             else:
                 print(f"Measurement aborted at time {self.current_time:.2f}s.\nPartial data may be saved on {self.folder}/")
+
+    def _soft_stop(self):
+        self._completed = True
+        self.stop()
 
     def stop(self):
         self._stop_event.set()
@@ -384,6 +397,7 @@ def _create_shell() -> Callable:
         call_stack = sys._getframe(2).f_back
         assert call_stack is not None
         locals = call_stack.f_locals
+        locals['meas'] = SpecialBibs.current._meas_context
         locals['stop'] = _MeasurementAutocall(SpecialBibs.current.stop)
         locals['pause'] = _MeasurementAutocall(SpecialBibs.current.pause)
         locals['resume'] = _MeasurementAutocall(SpecialBibs.current.resume)

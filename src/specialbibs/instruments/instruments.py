@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple, Union, overload
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
 import weakref
@@ -52,13 +52,13 @@ class LabJackInstrument(Instrument):
         if self.resource is not None:
             self.resource.close()
 
-class Channel:
+class Channel[G: Callable[..., float], S: Callable[[float], None]]:
     def __init__(self, name: str, unit: Optional[str] = None):
         self.name = name
         self.unit = unit or name[0].upper()
         self._cache = weakref.WeakKeyDictionary()
-        self._reader: Optional[Callable] = None
-        self._writer: Optional[Callable] = None
+        self._reader: Optional[Callable[..., float]] = None
+        self._writer: Optional[Callable[[float],None]] = None
 
     def __get__(self, instance: Optional[Any], owner: Optional[type] = None) -> _InstrumentChannel:
         if instance is None:
@@ -69,11 +69,11 @@ class Channel:
 
         return self._cache[instance]
 
-    def read(self, func: Callable):
+    def read(self, func: G):
         self._reader = func
         return func
 
-    def write(self, func: Callable):
+    def write(self, func: S):
         self._writer = func
         return func
 
@@ -105,9 +105,14 @@ class _InstrumentChannel:
             )
         return self.channel._writer(self._instance, *args, **kwargs)
 
-    def __call__(self, *args):
-        if args:
-            return self.set(*args)
+    @overload
+    def __call__(self, value: float) -> None: ...
+    @overload
+    def __call__(self) -> float: ...
+
+    def __call__(self, value: Optional[float] = None):
+        if value is not None:
+            return self.set(value)
         return self.get()
 
     def __repr__(self):

@@ -48,10 +48,13 @@ def setPressao(target: float):
 
 
 def loop(meas: MeasurementContext):
-    if meas.time < 20:
-        setPressao(meas.time//10 * 5) # Sobe a pressão 5 unidades a cada 10 segundos
+    intervalo = 10
+    step = 5
+    duracao = 50
+    if meas.time < duracao/2:
+        setPressao(meas.time//intervalo * step) # Sobe a pressão 5 unidades a cada 10 segundos
     else:
-        setPressao(meas.time//10 * 5 - 10) # Desce a pressão 5 unidades a cada 10 segundos, depois de 20 segundos
+        setPressao(((duracao - meas.time)//intervalo - 1)* step) # Desce a pressão 5 unidades a cada 10 segundos, depois de 20 segundos
 
 
     meas.plot(k2400_b.voltage)

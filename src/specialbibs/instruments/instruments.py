@@ -8,7 +8,7 @@ if os.name == 'nt':
     os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
 
 rm = ResourceManager()
-is_simulated = False
+is_simulated = True
 
 class Instrument:
     def on_load(self):

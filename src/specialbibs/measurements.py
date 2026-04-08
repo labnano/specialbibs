@@ -162,6 +162,8 @@ class MeasurementContext:
         return resolved_values
 
     def _save_figs(self):
+        if self._plotter is None or self._folder is None:
+            return
         for id in list(self._file_handlers):
             self._plotter.save_data(id, self._folder)
         self._plotter.save_agg(self._folder)
@@ -188,8 +190,8 @@ class SpecialBibs:
         folder: str = "output",
         plot: bool = True,
         on_start: Optional[Callable] = None,
-        on_stop: Optional[Callable[[list[PlotData], str]]] = None,
-        on_complete: Optional[Callable[[list[PlotData], str]]]  = None,
+        on_stop: Optional[Callable[[list[PlotData], str], None]] = None,
+        on_complete: Optional[Callable[[list[PlotData], str], None]]  = None,
     ):
         """
         Args:

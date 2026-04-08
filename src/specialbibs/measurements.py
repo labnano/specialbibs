@@ -24,7 +24,7 @@ class MeasurementContext:
         self._lock = threading.Lock()
         self._plotter = plotter
         self._folder = folder
-        self._stop = stop if stop is not None else lambda: None
+        self.stop = stop if stop is not None else lambda: None
         self._file_handlers: Dict[str, TextIOWrapper] = {}
 
     def map(
@@ -183,7 +183,9 @@ class SpecialBibs:
         sample_rate: float = 1,
         folder: str = "output",
         plot: bool = True,
+        on_start: Optional[Callable] = None,
         on_stop: Optional[Callable] = None,
+        on_complete: Optional[Callable] = None,
     ):
         """
         Args:
@@ -196,7 +198,9 @@ class SpecialBibs:
         global current
         SpecialBibs.current = self
         self.func = func
+        self.on_start = on_start
         self.on_stop = on_stop
+        self.on_complete = on_complete
         self.duration = duration
         self.sample_rate = sample_rate
         self._folder = folder
@@ -250,6 +254,9 @@ class SpecialBibs:
         try:
             os.makedirs(self.folder, exist_ok=True)
 
+            if self.on_start:
+                self.on_start()
+
             start_time = time.perf_counter()
 
             i = 0
@@ -286,6 +293,9 @@ class SpecialBibs:
             if not self._stop_event.is_set():
                 self._completed = True
 
+            if self.on_complete:
+                self.on_complete()
+
         except Exception as e:
             print(f"Measurement error: {e}")
             raise
@@ -304,8 +314,11 @@ class SpecialBibs:
     def stop(self):
         self._stop_event.set()
         self._paused_event.set()  # Unpause to allow thread to exit
-        if self._meas_thread:
-            self._meas_thread.join(timeout=2.0)
+        try:
+            if self._meas_thread:
+                self._meas_thread.join(timeout=2.0)
+        except:
+            pass
         if self.on_stop:
             self.on_stop()
 

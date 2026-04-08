@@ -19,11 +19,21 @@ class PressureSystem(LabJackInstrument):
 
     @sg.write
     def _set_sg(self, val: int):
-        self.resource.setDIOState(LabJackInstrument.FIO1, val)
+        self.resource.setDIOState(LabJackInstrument.FIO1, self.valve_value(val))
     @sa.write
     def _set_sa(self, val: int):
-        self.resource.setDIOState(LabJackInstrument.FIO2, val)
+        self.resource.setDIOState(LabJackInstrument.FIO2, self.valve_value(val))
     @sv.write
     def _set_sv(self, val: int):
-        self.resource.setDIOState(LabJackInstrument.FIO0, val)
-        self.resource.setDIOState(LabJackInstrument.FIO3, val)
+        self.resource.setDIOState(LabJackInstrument.FIO0, self.valve_value(val))
+        self.resource.setDIOState(LabJackInstrument.FIO3, self.valve_value(val))
+
+    def valve_value(self, val: int):
+        if val == 0:
+            _val = 1
+        elif val == 1:
+            _val = 0
+        else:
+            print("Valor proibido pra valvula")
+            _val = 1
+        return _val

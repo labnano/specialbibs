@@ -16,7 +16,6 @@ def setPressao(target: float):
     if updated:
         ramp_direction = np.sign(target - old_target)
         old_target = target
-        print(target)
 
     margem_up = 0.03
     margem_down = 0.05

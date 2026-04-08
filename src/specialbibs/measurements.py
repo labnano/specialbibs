@@ -8,7 +8,7 @@ import time
 from typing import Any, Callable, Dict, Optional, Set, Union
 
 from IPython.core.autocall import IPyAutocall
-from .plotting import RealTimePlotter
+from .plotting import RealTimePlotter, PlotData
 
 class MeasurementContext:
     def __init__(
@@ -161,6 +161,10 @@ class MeasurementContext:
                 resolved_values.append(('', float(v)))
         return resolved_values
 
+    def _save_figs(self):
+        for id in list(self._file_handlers):
+            self._plotter.save_data(id, self._folder)
+        self._plotter.save_agg(self._folder)
 
     def _save(self, id: str, *values: Any):
         resolved_values = [v[1] for v in self._resolve_values(*values)]
@@ -184,8 +188,8 @@ class SpecialBibs:
         folder: str = "output",
         plot: bool = True,
         on_start: Optional[Callable] = None,
-        on_stop: Optional[Callable] = None,
-        on_complete: Optional[Callable] = None,
+        on_stop: Optional[Callable[[list[PlotData], str]]] = None,
+        on_complete: Optional[Callable[[list[PlotData], str]]]  = None,
     ):
         """
         Args:
@@ -294,7 +298,7 @@ class SpecialBibs:
                 self._completed = True
 
             if self.on_complete:
-                self.on_complete()
+                self.on_complete(list(self._meas_context._plotter.plots.values()), self.folder)
 
         except Exception as e:
             print(f"Measurement error: {e}")
@@ -302,6 +306,7 @@ class SpecialBibs:
         finally:
             for file in self._meas_context._file_handlers.values():
                 file.close()
+            self._meas_context._save_figs()
             if self._completed:
                 print(f"Measurement completed. Data saved to folder {self.folder}/")
             else:
@@ -320,7 +325,10 @@ class SpecialBibs:
         except:
             pass
         if self.on_stop:
-            self.on_stop()
+            try:
+                self.on_stop(list(self._meas_context._plotter.plots.values()), self.folder)
+            except:
+                pass
 
     def pause(self):
         if not self.is_running:
@@ -390,7 +398,7 @@ def _create_shell() -> Callable:
     c.InteractiveShellApp.exec_lines.append('%autoreload 2')
 
     shell = InteractiveShellEmbed(config=c)
-    #shell.enable_matplotlib()
+    shell.enable_matplotlib()
 
     kb = shell.pt_app.key_bindings
     @kb.add('escape', eager=True)  

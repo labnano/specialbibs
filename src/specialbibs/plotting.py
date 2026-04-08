@@ -45,9 +45,45 @@ class RealTimePlotter:
     ):
         self.data_queue.put((plot_id, x, y_values))
 
+    def save_data(self, plot_id: str, path: str):
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+        from matplotlib.figure import Figure
+        fig = Figure()
+        canvas = FigureCanvas(fig)
+        p = self.plots[plot_id]
+        ax = fig.add_subplot(111)
+
+        ax.set_xlabel(p.x_label)
+        y_labels = [l for l in p.y_labels if l]
+        if len(y_labels) == 1:
+            ax.set_ylabel(y_labels[0])
+        ax.grid(True, alpha=0.3)
+
+        self.lines[plot_id] = []
+        for series_idx in range(p.num_series):
+            color = PLOT_COLORS[series_idx % len(PLOT_COLORS)]
+            if len(y_labels) > 1 and series_idx < len(p.y_labels):
+                ax.plot(
+                    p.x_data,
+                    p.y_data[:, series_idx],
+                    f"{color}-",
+                    linewidth=1,
+                    label=p.y_labels[series_idx],
+                )
+            else:
+                ax.plot(p.x_data, p.y_data[:, series_idx], f"{color}-", linewidth=1)
+        canvas.print_figure(path + f'/measurement{list(self.plots).index(plot_id) + 1}.png')
+        canvas.print_figure(path + f'/measurement{list(self.plots).index(plot_id) + 1}.svg')
+        plt.close(fig)
+
+    def save_agg(self, path):
+        self.fig.savefig(path + '/measurement_all.png')
+        self.fig.savefig(path + '/measurement_all.svg')
+
+
     def restart(self):
         import matplotlib.pyplot as plt
-        import matplotlib._pylab_helpers as pylab_helpers
 
         self.data_queue.queue.clear()
         self.initialized = False
@@ -59,9 +95,10 @@ class RealTimePlotter:
         try:
             if self._anim:
                 self._anim.pause()
+                del self._anim
         except:
             pass
-        del self._anim
+            
 
         if hasattr(self, "fig") and self.fig is not None:
             plt.close(self.fig)
@@ -105,11 +142,13 @@ class RealTimePlotter:
             update,
             interval=ANIMATION_INTERVAL_MS,
             blit=True,
-            cache_frame_data=False,
+            cache_frame_data=True,
+            save_count=10
         )
         plt.pause(0.1)
         # plt.show(block=False)
 
+    
     def _process_data(
         self, plot_id: str, x: tuple[str, float], y_values: List[tuple[str, float]]
     ):

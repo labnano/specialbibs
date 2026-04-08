@@ -4,8 +4,8 @@ import numpy as np
 
 # Definindo os equipamentos
 #k2400_a = K2400(19)
-dmm = HP_DMM(22)
 k2400_b = K2400(20)
+dmm = HP_DMM(22)
 sistema = PressureSystem()
  
 # Definindo os canais
@@ -56,7 +56,7 @@ def setPressao(target: float):
 start = -0.8
 end = 0.8
 intervalo = 10
-step = 0.8
+step = 0.2
 
 n_passos = (end-start)//step
 duracao = ((n_passos+1) * 2 - 1) * intervalo
@@ -70,7 +70,7 @@ def loop(meas: MeasurementContext):
     j = abs(( (i+n_passos) % (2*n_passos)) - n_passos) #Nao mecha nisso
     setPressao(start + j * step)
 
-    meas.plot(("Voltage", Isd()*multiplicador_preamp))
+    meas.plot(("Voltage (V)", Isd()*multiplicador_preamp))
     meas.plot(P)
 
 
@@ -80,20 +80,37 @@ def _start():
     sistema.sa(0)  # Desliga alivio
     sistema.sg(0) # Desliga gas
     
-    while not setPressao(start - 0.05):
-        continue
+    # while not setPressao(start - 0.05):
+    #     continue
 
 
-def _stop():
+from specialbibs.plotting import PlotData
+def _stop(dados: list[PlotData], folder: str):
     Vsd(0) # Resetar tensao no fim da medida
     sistema.sv(0)
     sistema.sa(0)
     sistema.sg(0)
 
+    from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    fig = Figure()
+    canvas = FigureCanvas(fig)
+    ax1 = fig.add_subplot(111)
+    ax1.plot(dados[0].x_data, dados[0].y_data[:,0], color="black")
+    ax1.set_ylabel(dados[0].y_labels[0])
+    ax1.set_xlabel(dados[0].x_label)
+    ax1.tick_params(axis='y', labelcolor="black")
+    ax2 = ax1.twinx()
+    ax2.plot(dados[0].x_data, dados[1].y_data[:,0], color="r")
+    ax2.set_ylabel(dados[1].y_labels[0])
+    ax2.tick_params(axis='y', labelcolor="r")
+    fig.tight_layout() 
+    canvas.print_figure(folder+'/minhafigura.svg')
+
 SpecialBibs(loop,
     duration=duracao,
     sample_rate=20, # 20 medidas por segundo
-    folder=f"medidas",
+    folder=f"medidas/amostra1",
     on_start=_start,
     on_complete=_stop,
     on_stop=_stop

@@ -329,8 +329,8 @@ class SpecialBibs:
         if self.on_stop:
             try:
                 self.on_stop(list(self._meas_context._plotter.plots.values()), self.folder)
-            except:
-                pass
+            except Exception as e:
+                print(e)
 
     def pause(self):
         if not self.is_running:
@@ -387,6 +387,8 @@ def _create_shell() -> Callable:
             return [(Token.Prompt, '>>> ')]
         def continuation_prompt_tokens(self, width=None,*, lineno=None, wrap_count=None):
             return [(Token.Prompt, '... ')]
+        
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.wayland.*.warning=false" # Disable annoying qt messages
 
     c = Config()
     c.TerminalInteractiveShell.prompts_class = ClassicPrompt
@@ -400,7 +402,7 @@ def _create_shell() -> Callable:
     c.InteractiveShellApp.exec_lines.append('%autoreload 2')
 
     shell = InteractiveShellEmbed(config=c)
-    shell.enable_matplotlib()
+    shell.enable_matplotlib('QtAgg')
 
     kb = shell.pt_app.key_bindings
     @kb.add('escape', eager=True)  

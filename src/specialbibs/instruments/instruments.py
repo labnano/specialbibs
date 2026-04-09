@@ -8,7 +8,7 @@ if os.name == 'nt':
     os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
 
 rm = ResourceManager()
-is_simulated = True
+is_simulated = False
 
 class Instrument:
     def on_load(self):
@@ -30,6 +30,7 @@ class VisaInstrument(Instrument):
         self.on_load()
 
 
+labjack_resource = None
 class LabJackInstrument(Instrument):
     FIO0 = 0
     FIO1 = 1
@@ -40,11 +41,14 @@ class LabJackInstrument(Instrument):
     def __init__(
         self
     ):
+        global labjack_resource
         super().__init__()
         if is_simulated:
             return
         import u6
-        self.resource = u6.U6()
+        if not labjack_resource:
+            labjack_resource = u6.U6()
+        self.resource = labjack_resource
         self.resource.getCalibrationData()
         self.on_load()
 

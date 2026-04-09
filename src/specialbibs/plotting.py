@@ -7,6 +7,12 @@ import numpy as np
 if TYPE_CHECKING:
     from matplotlib.animation import FuncAnimation
 
+from matplotlib.backend_bases import NavigationToolbar2
+NavigationToolbar2.toolitems = [
+    item for item in NavigationToolbar2.toolitems 
+    if item[0] != 'Save' # Save button is bugged so we removed it :)
+]
+
 
 PLOT_COLORS = ["b", "r", "g", "c", "m", "y", "k"]
 ANIMATION_INTERVAL_MS = 50
@@ -141,9 +147,9 @@ class RealTimePlotter:
             self.fig,
             update,
             interval=ANIMATION_INTERVAL_MS,
-            blit=True,
-            cache_frame_data=True,
-            save_count=10
+            blit=False,
+            cache_frame_data=False,
+            # save_count=10
         )
         plt.pause(0.1)
         # plt.show(block=False)

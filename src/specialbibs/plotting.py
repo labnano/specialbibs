@@ -17,6 +17,31 @@ NavigationToolbar2.toolitems = [
 PLOT_COLORS = ["b", "r", "g", "c", "m", "y", "k"]
 ANIMATION_INTERVAL_MS = 50
 
+#TOOK FROM https://stackoverflow.com/questions/17446956/matplotlib-exit-after-animation
+from matplotlib import animation as ani
+class FuncAnimationDisposable(ani.FuncAnimation):
+    def __init__(self, fig, func, **kwargs):
+        super().__init__(fig, func, **kwargs)
+        
+    def _step(self, *args):
+        from matplotlib import pyplot as plt
+        still_going = super()._step(*args)
+        if not still_going:
+            if self._repeat:
+                self._init_draw()
+                self.frame_seq = self.new_frame_seq()
+                self.event_source.interval = self._repeat_delay
+                return True
+            else:
+                plt.close()
+                if self._blit:
+                    self._fig.canvas.mpl_disconnect(self._resize_id)
+                self._fig.canvas.mpl_disconnect(self._close_id)
+                self.event_source = None
+                return False
+
+        self.event_source.interval = self._interval
+        return True
 
 @dataclass
 class PlotData:
@@ -29,7 +54,7 @@ class PlotData:
 
 
 class RealTimePlotter:
-    def __init__(self):
+    def __init__(self, blocking: bool = False):
         self.data_queue: queue.Queue[
             tuple[str, tuple[str, float], List[tuple[str, float]]]
         ] = queue.Queue()
@@ -41,7 +66,9 @@ class RealTimePlotter:
         self.key_press_event: Optional[Callable] = None
         self._anim: Optional["FuncAnimation"] = None
         self.close_event: Optional[Callable] = None
+        self._stop_event = threading.Event()
         self._close_cid: Optional[int] = None
+        self._blocking: bool = blocking
 
     def start(self):
         self._run_plot_loop()
@@ -120,6 +147,10 @@ class RealTimePlotter:
         def update(_frame):
             while True:
                 try:
+                    if self._stop_event.is_set():
+                        raise StopIteration
+                        # self._anim.event_source.stop()
+                        # plt.close(self.fig)
                     plot_id, x, y_values = self.data_queue.get_nowait()
                     self._process_data(plot_id, x, y_values)
                 except queue.Empty:
@@ -143,16 +174,20 @@ class RealTimePlotter:
                 "close_event", self.close_event
             )
 
-        self._anim = animation.FuncAnimation(
+        self._anim = FuncAnimationDisposable(
             self.fig,
             update,
             interval=ANIMATION_INTERVAL_MS,
             blit=False,
             cache_frame_data=False,
+            repeat=False
             # save_count=10
         )
-        plt.pause(0.1)
-        # plt.show(block=False)
+        if self._blocking:
+            plt.show(block=True)
+            plt.close()
+        else:
+            plt.pause(0.1)
 
     
     def _process_data(

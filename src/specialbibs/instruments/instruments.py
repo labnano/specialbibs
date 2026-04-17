@@ -37,6 +37,8 @@ class LabJackInstrument(Instrument):
     FIO2 = 2
     FIO3 = 3
     AIN3 = 3
+    AIN1 = 1
+    DAC0 = 5000
 
     def __init__(
         self

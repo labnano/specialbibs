@@ -192,6 +192,9 @@ class SpecialBibs:
         on_start: Optional[Callable] = None,
         on_stop: Optional[Callable[[list[PlotData], str], None]] = None,
         on_complete: Optional[Callable[[list[PlotData], str], None]]  = None,
+        exit_on_finish: bool = False,
+        interactive: bool = True,
+        append_date: bool = True
     ):
         """
         Args:
@@ -210,7 +213,10 @@ class SpecialBibs:
         self.duration = duration
         self.sample_rate = sample_rate
         self._folder = folder
-        self.folder = self._folder + '/' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        if append_date:
+            self.folder = self._folder + '/' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        else:
+            self.folder = self._folder
         self._plot_enabled = plot
 
         self._meas_thread: Optional[threading.Thread] = None
@@ -220,6 +226,8 @@ class SpecialBibs:
         self._paused_event = threading.Event()
         self._paused_event.set()  # Not paused initially
         self._completed = False
+        self._exit_on_finish = exit_on_finish
+        self._interactive = interactive
 
 
         # Auto-start
@@ -227,18 +235,26 @@ class SpecialBibs:
 
     def _start(self):
         if self._plot_enabled and self.func is not None:
-            self._plotter = RealTimePlotter()
+            self._plotter = RealTimePlotter(blocking=not self._interactive)
             self._plotter.key_press_event = _on_mplt_keypress
             self._plotter.close_event = _on_mplt_close
 
         self._start_measuremt_thread()
 
-        shell = _create_shell()
+
+        os.environ["QT_LOGGING_RULES"] = "qt.qpa.wayland.*.warning=false"
+        if self._interactive:
+            shell = _create_shell()
+        else:
+            from matplotlib import use as mp_use
+            mp_use('QtAgg') 
 
         if self._plotter:
             self._plotter.start()
         
-        shell()
+        if self._interactive:
+            shell()
+        
         self.stop()  # Ensure measurement stops when shell exits
 
 
@@ -311,8 +327,14 @@ class SpecialBibs:
             self._meas_context._save_figs()
             if self._completed:
                 print(f"Measurement completed. Data saved to folder {self.folder}/")
+                if self._exit_on_finish:
+                    if self._interactive:
+                        os._exit(1)
+                    elif self._plot_enabled:
+                        self._plotter._stop_event.set()
             else:
                 print(f"Measurement aborted at time {self.current_time:.2f}s.\nPartial data may be saved on {self.folder}/")
+            
 
     def _soft_stop(self):
         self._completed = True
@@ -388,8 +410,6 @@ def _create_shell() -> Callable:
         def continuation_prompt_tokens(self, width=None,*, lineno=None, wrap_count=None):
             return [(Token.Prompt, '... ')]
         
-    os.environ["QT_LOGGING_RULES"] = "qt.qpa.wayland.*.warning=false" # Disable annoying qt messages
-
     c = Config()
     c.TerminalInteractiveShell.prompts_class = ClassicPrompt
     c.TerminalInteractiveShell.separate_in = ''

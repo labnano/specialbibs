@@ -315,7 +315,7 @@ class SpecialBibs:
             if not self._stop_event.is_set():
                 self._completed = True
 
-            if self.on_complete:
+            if self.on_complete and self._completed:
                 self.on_complete(list(self._meas_context._plotter.plots.values()), self.folder)
 
         except Exception as e:
@@ -352,7 +352,7 @@ class SpecialBibs:
             try:
                 self.on_stop(list(self._meas_context._plotter.plots.values()), self.folder)
             except Exception as e:
-                print(e)
+                print("Error on stop: (you may ignore it)", e)
 
     def pause(self):
         if not self.is_running:

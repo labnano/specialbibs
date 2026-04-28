@@ -60,3 +60,18 @@ class K2400(VisaInstrument):
         self.resource.write(':OUTPUT ON')
         self.resource.write(':SENSE:CURRENT:NPLCYCLES 0.01') # Current integration rate (0.01 to 10)
         self.resource.write(':SENSE:VOLTAGE:NPLCYCLES 0.01') # Voltage integration rate (0.01 to 10)
+
+class K2000(VisaInstrument):
+    """DMM K2000"""
+
+    voltage = Channel("Voltage", unit="V")
+
+    def __init__(self, gpib_address: int,):
+        super().__init__(f"GPIB0::{gpib_address}::INSTR")
+
+    @voltage.read
+    def _read_voltage(self) -> float:
+        response = self.resource.query("DATA?")
+        voltage = float(response)
+        return voltage
+

@@ -37,7 +37,7 @@ class PressureSystem(LabJackInstrument):
     @temperatura.read
     def _get_temperatura(self) -> float:
         v = self._get_temp_v()
-        return v*37.62613021705122-89.774944412884
+        return v*40.220657497767895-101.03338148350326
     @temperatura.write
     def _set_temperatura(self, val:float):
         self._set_temp_v(val/41.37307142857143+2.4084074700072335)

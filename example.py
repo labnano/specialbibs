@@ -1,63 +1,46 @@
 from specialbibs import SpecialBibs, MeasurementContext
-from specialbibs.instruments import K2400, PressureSystem, HP_DMM
-from bibs_coisas import setPressao, plot_same_graph
+from specialbibs.instruments import K2400, K2000
+from bibs_coisas import plot_same_graph
 
-# Definindo os equipamentos
-#k2400_a = K2400(19)
+# Equipamentos
 k2400_b = K2400(20)
-dmm = HP_DMM(22)
-sistema = PressureSystem()
- 
-# Definindo os canais
+dmm = K2000(16)
+
+# Canais
 Vsd = k2400_b.voltage
 Isd = dmm.voltage
-P = sistema.sensor
-
-start = -0.8
-end = 0.8
-intervalo = 10 # Tempo entre cada passo (s)
-step = 0.2 # Variacao da pressao a cada passo
-
-multiplicador_preamp = 1
 
 
-n_passos = (end-start)//step
-n_escadas = 2
-duracao = (1 + n_passos * n_escadas) * intervalo
+duracao = 10 # segundos
+
 def loop(meas: MeasurementContext):
-    i = meas.time // intervalo
-    
-    j = abs(( (i+n_passos) % (2*n_passos)) - n_passos) # j varia entre 0,1,2...n_passos,n_passos-1,...,2,1,0 em loop
-    setPressao(start + j * step)
+    tempo = meas.time  # tempo em segundos
 
-    meas.plot(("Voltage (V)", Isd()*multiplicador_preamp))
-    meas.plot(P)
+    corrente = Isd()
 
+    corrente_uA = corrente * 1e6
+
+    meas.plot(("Voltage (V)", corrente))
+    meas.plot(("Isd (uA)", corrente_uA))
+
+    if corrente != 0:
+        resistencia = 1 / corrente_uA
+        meas.plot(("R (Mohm)", resistencia))
 
 def _start():
-    Vsd(1) # Setar tensao em 1v apenas no comeco
-    sistema.sv(0)  # Desliga vacuo
-    sistema.sa(0)  # Desliga alivio
-    sistema.sg(0) # Desliga gas
-    
-    #while not setPressao(start - 0.05):
-    #     continue
-
+    Vsd(1)  # aplica 1V no início
 
 def _stop(dados, folder):
-    Vsd(0) # Resetar tensao no fim da medida
-    sistema.sv(0)
-    sistema.sa(0)
-    sistema.sg(0)
-    
+    Vsd(0)  # desliga no final
     plot_same_graph(dados, folder)
 
-
-SpecialBibs(loop,
+SpecialBibs(
+    loop,
     duration=duracao,
-    sample_rate=20, # 20 medidas por segundo
-    folder=f"medidas/amostra1",
+    sample_rate=20,  # 20 Hz
+    folder="medidas/teste",
     on_start=_start,
-    on_complete=_stop,
-    on_stop=_stop
-) 
+    # on_complete=_stop,
+    on_stop=_stop,
+    exit_on_finish=False
+)

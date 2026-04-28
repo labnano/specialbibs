@@ -111,8 +111,9 @@ class RealTimePlotter:
         plt.close(fig)
 
     def save_agg(self, path):
-        self.fig.savefig(path + '/measurement_all.png')
-        self.fig.savefig(path + '/measurement_all.svg')
+        # self.fig.tight_layout()
+        self.fig.savefig(path + '/measurement_all.png', backend='QtAgg')
+        self.fig.savefig(path + '/measurement_all.svg', backend='Cairo')
 
 
     def restart(self):

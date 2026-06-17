@@ -245,6 +245,7 @@ class RealTimePlotter:
                         linewidth=1,
                         label=plot.y_labels[series_idx],
                     )
+                    ax.legend()
                 else:
                     (line,) = ax.plot([], [], f"{color}-", linewidth=1)
                 self.lines[plot_id].append(line)

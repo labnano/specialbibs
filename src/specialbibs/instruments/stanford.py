@@ -200,3 +200,6 @@ class SR810(VisaInstrument):
     def on_load(self):
         print("Loaded SR810")
         #self.resource.write("*RST")
+
+    def reset(self):
+        self.resource.write("*RST")

@@ -9,6 +9,7 @@ from .keithley import K2400, K2000
 from .dmm import HP_DMM
 from .pressure import PressureSystem
 from .lakeshore import L330
+from .stanford import SR810
 
 __all__ = [
     "Instrument",
@@ -20,5 +21,6 @@ __all__ = [
     "HP_DMM",
     "PressureSystem",
     "_InstrumentChannel",
-    "L330"
+    "L330",
+    "SR810"
 ]

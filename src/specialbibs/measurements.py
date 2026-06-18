@@ -6,9 +6,11 @@ import threading
 from datetime import datetime
 import time
 from typing import Any, Callable, Dict, Optional, Set, Union
+import weakref
 
 from IPython.core.autocall import IPyAutocall
 from .plotting import RealTimePlotter, PlotData
+from .instruments.instruments import _InstrumentChannel
 
 class MeasurementContext:
     def __init__(
@@ -279,6 +281,9 @@ class SpecialBibs:
             if self.on_start:
                 self.on_start()
 
+            _InstrumentChannel.should_use_cache = True
+            _InstrumentChannel.set_value_cache_dict = weakref.WeakKeyDictionary()
+
             start_time = time.perf_counter()
 
             i = 0
@@ -325,6 +330,7 @@ class SpecialBibs:
             for file in self._meas_context._file_handlers.values():
                 file.close()
             self._meas_context._save_figs()
+            _InstrumentChannel.should_use_cache = False
             if self._completed:
                 print(f"Measurement completed. Data saved to folder {self.folder}/")
                 if self._exit_on_finish:

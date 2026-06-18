@@ -60,8 +60,8 @@ class K2400(VisaInstrument):
             self.resource.write(':SENSE:CURRENT:PROTECTION 100e-6') #Set current compliance for V-Source (-1.05 to 1.05) 
             self.resource.write(':SENSE:CURRENT:RANGE 1e-6')
             self.resource.write(':OUTPUT ON')
-            #self.resource.write(':SENSE:CURRENT:NPLCYCLES 1') # Current integration rate (0.01 to 10)
-            #self.resource.write(':SENSE:VOLTAGE:NPLCYCLES 1') # Voltage integration rate (0.01 to 10)
+            #self.resource.write(':SENSE:CURRENT:NPLCYCLES 0.01') # Current integration rate (0.01 to 10)
+            #self.resource.write(':SENSE:VOLTAGE:NPLCYCLES 0.01') # Voltage integration rate (0.01 to 10)
 
     def reset(self):
         self.resource.write('*RST')

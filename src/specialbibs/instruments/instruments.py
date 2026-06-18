@@ -88,6 +88,9 @@ class Channel[G: Callable[..., float], S: Callable[[float], None]]:
 
 
 class _InstrumentChannel:
+    set_value_cache_dict: weakref.WeakKeyDictionary[_InstrumentChannel, float] = weakref.WeakKeyDictionary()
+    should_use_cache = False
+
     # self._instance -> Instance of the instrument 
     def __init__(self, channel: Channel, instance: Any):
         self.channel: Channel = channel
@@ -128,7 +131,10 @@ class _InstrumentChannel:
                 else:
                     dt_start = 0.03
                     target = args[0]
-                    val = self.get()
+                    if _InstrumentChannel.should_use_cache and self in _InstrumentChannel.set_value_cache_dict:
+                        val = _InstrumentChannel.set_value_cache_dict[self]
+                    else:
+                        val = self.get()
                     diff = abs(target - val)
                     sign = math.copysign(1, target - val)
                     curr = min(self.rate * dt_start, diff)
@@ -139,6 +145,7 @@ class _InstrumentChannel:
                         et = time.perf_counter() - st
                         curr = min(curr + self.rate * et, diff)
                     self.channel._writer(self._instance, val + sign * curr, **kwargs)
+                    _InstrumentChannel.set_value_cache_dict[self] = target
                     return
         else:
             if self.multiplier != 1.0:
@@ -148,13 +155,15 @@ class _InstrumentChannel:
         return self.channel._writer(self._instance, *args, **kwargs)
 
     @overload
+    def __call__(self, value: float, **kwargs) -> None: ...
+    @overload
     def __call__(self, value: float) -> None: ...
     @overload
     def __call__(self) -> float: ...
 
-    def __call__(self, value: Optional[float] = None):
+    def __call__(self, value: Optional[float] = None, **kwargs):
         if value is not None:
-            return self.set(value)
+            return self.set(value, **kwargs)
         return self.get()
 
     def __repr__(self):

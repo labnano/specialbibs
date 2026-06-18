@@ -6,9 +6,10 @@ class K2400(VisaInstrument):
     voltage = Channel("Voltage", unit="V")
     current = Channel("Current", unit="A")
 
-    def __init__(self, gpib_address: int, dmm = False):
+    def __init__(self, gpib_address: int, dmm = False, auto_reset = False):
         self.as_dmm = dmm
         self.reading_voltage = True
+        self.auto_reset = auto_reset
         super().__init__(f"GPIB0::{gpib_address}::INSTR")
 
     @voltage.read
@@ -51,15 +52,21 @@ class K2400(VisaInstrument):
 
     def on_load(self):
         print("Loaded K2400")
+        if self.auto_reset:
+            self.resource.write('*RST')
+            self.resource.write(':SOURCE:FUNCTION VOLT')
+            #self.resource.write(':SOURCE:VOLTAGE:RANGE 20') # Select range for V-Source (-210 to 210)
+            self._set_mode()
+            self.resource.write(':SENSE:CURRENT:PROTECTION 100e-6') #Set current compliance for V-Source (-1.05 to 1.05) 
+            self.resource.write(':SENSE:CURRENT:RANGE 1e-6')
+            self.resource.write(':OUTPUT ON')
+            #self.resource.write(':SENSE:CURRENT:NPLCYCLES 1') # Current integration rate (0.01 to 10)
+            #self.resource.write(':SENSE:VOLTAGE:NPLCYCLES 1') # Voltage integration rate (0.01 to 10)
+
+    def reset(self):
         self.resource.write('*RST')
-        self.resource.write(':SOURCE:FUNCTION VOLT')
-        self.resource.write(':SOURCE:VOLTAGE:RANGE 200') # Select range for V-Source (-210 to 210)
-        self._set_mode()
-        self.resource.write(':SENSE:CURRENT:PROTECTION 1000e-3') #Set current compliance for V-Source (-1.05 to 1.05) 
-        self.resource.write(':SENSE:CURRENT:RANGE 100e-3')
         self.resource.write(':OUTPUT ON')
-        self.resource.write(':SENSE:CURRENT:NPLCYCLES 0.01') # Current integration rate (0.01 to 10)
-        self.resource.write(':SENSE:VOLTAGE:NPLCYCLES 0.01') # Voltage integration rate (0.01 to 10)
+
 
 class K2000(VisaInstrument):
     """DMM K2000"""

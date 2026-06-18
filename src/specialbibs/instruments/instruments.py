@@ -3,6 +3,8 @@ from typing import Any, Callable, Optional, Tuple, Union, overload
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource
 import weakref
+import time
+import math
 import os
 if os.name == 'nt':
     os.add_dll_directory(r"C:\\Program Files\\Keysight\\IO Libraries Suite\\bin")
@@ -59,10 +61,11 @@ class LabJackInstrument(Instrument):
             self.resource.close()
 
 class Channel[G: Callable[..., float], S: Callable[[float], None]]:
-    def __init__(self, name: str, unit: Optional[str] = None):
+    def __init__(self, name: str, unit: Optional[str] = None, rate_regulated = False):
         self.name = name
         self.unit = unit or name[0].upper()
-        self._cache = weakref.WeakKeyDictionary()
+        self.rate_regulated = rate_regulated
+        self._cache: weakref.WeakKeyDictionary[Any, _InstrumentChannel] = weakref.WeakKeyDictionary()
         self._reader: Optional[Callable[..., float]] = None
         self._writer: Optional[Callable[[float],None]] = None
 
@@ -85,9 +88,12 @@ class Channel[G: Callable[..., float], S: Callable[[float], None]]:
 
 
 class _InstrumentChannel:
+    # self._instance -> Instance of the instrument 
     def __init__(self, channel: Channel, instance: Any):
         self.channel: Channel = channel
         self._instance: Any = instance
+        self.rate: float = None
+        self.multiplier = 1.0
 
     def get(self):
         if is_simulated:
@@ -98,7 +104,7 @@ class _InstrumentChannel:
                     self.channel.name, self._instance.__class__.__name__
                 )
             )
-        return self.channel._reader(self._instance)
+        return self.channel._reader(self._instance) * self.multiplier
 
     def set(self, *args, **kwargs):
         if is_simulated:
@@ -109,6 +115,36 @@ class _InstrumentChannel:
                     self.channel.name, self._instance.__class__.__name__
                 )
             )
+        if len(args) == 1:
+            if self.multiplier != 1.0:
+                args = list(args)
+                args[0] = args[0] * self.multiplier
+                args = tuple(args)
+            if self.rate is not None:
+                if self.channel.rate_regulated:
+                    kwargs['rate'] = self.rate
+                elif self.channel._reader is None:
+                    raise AttributeError("To use a rate with a set-only channel it must have hardware ramping")
+                else:
+                    dt_start = 0.03
+                    target = args[0]
+                    val = self.get()
+                    diff = abs(target - val)
+                    sign = math.copysign(1, target - val)
+                    curr = min(self.rate * dt_start, diff)
+                    while curr != diff:
+                        st = time.perf_counter()
+                        v = val + sign * curr
+                        self.channel._writer(self._instance, v, **kwargs)
+                        et = time.perf_counter() - st
+                        curr = min(curr + self.rate * et, diff)
+                    self.channel._writer(self._instance, val + sign * curr, **kwargs)
+                    return
+        else:
+            if self.multiplier != 1.0:
+                raise AttributeError("A multiplier cannot be passed to a set channel that recieves multiple arguments. Multiply it before calling the set function")
+            if self.rate is not None:
+                raise AttributeError("A rate cannot be passed to a set channel that recieves multiple arguments.")
         return self.channel._writer(self._instance, *args, **kwargs)
 
     @overload

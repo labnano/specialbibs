@@ -287,6 +287,7 @@ class SpecialBibs:
             start_time = time.perf_counter()
 
             i = 0
+            _warning_issued = False 
             while True:
                 if (self.duration is not None) and (i >= (num_samples or 0)):
                     break
@@ -314,7 +315,11 @@ class SpecialBibs:
                 sleep_time = target_time - elapsed + interval
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-
+                elif i > 0:
+                    if not _warning_issued:
+                        print("Warning: Measurement can't keep up with sample rate")
+                        print("Recomended sample rate:", int((i+1)/elapsed))
+                        _warning_issued = True
                 i += 1
 
             if not self._stop_event.is_set():

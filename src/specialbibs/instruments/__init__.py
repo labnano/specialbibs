@@ -10,6 +10,7 @@ from .dmm import HP_DMM
 from .pressure import PressureSystem
 from .lakeshore import L330
 from .stanford import SR810
+from .mfc import G50
 
 __all__ = [
     "Instrument",
@@ -22,5 +23,6 @@ __all__ = [
     "PressureSystem",
     "_InstrumentChannel",
     "L330",
-    "SR810"
+    "SR810",
+    "G50"
 ]

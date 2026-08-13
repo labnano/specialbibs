@@ -233,6 +233,7 @@ class RealTimePlotter:
             if len(y_labels) == 1:
                 ax.set_ylabel(y_labels[0])
             ax.grid(True, alpha=0.3)
+            ax.ticklabel_format(style='sci', axis='y', scilimits=(-2,2))
 
             self.lines[plot_id] = []
             for series_idx in range(plot.num_series):

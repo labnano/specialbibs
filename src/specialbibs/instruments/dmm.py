@@ -15,5 +15,5 @@ class HP_DMM(VisaInstrument):
         return voltage
 
     def on_load(self):
-        self.resource.write("VOLTage:DC:NPLCycles 0.2")
+        #self.resource.write("VOLTage:DC:NPLCycles 0.2")
         print("Loaded DMM")

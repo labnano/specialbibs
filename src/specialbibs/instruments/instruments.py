@@ -119,10 +119,10 @@ class _InstrumentChannel:
                 )
             )
         if len(args) == 1:
-            if self.multiplier != 1.0:
-                args = list(args)
-                args[0] = args[0] * self.multiplier
-                args = tuple(args)
+            #if self.multiplier != 1.0:
+            #    args = list(args)
+            #    args[0] = args[0] * self.multiplier
+            #    args = tuple(args)
             if self.rate is not None:
                 if self.channel.rate_regulated:
                     kwargs['rate'] = self.rate

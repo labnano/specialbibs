@@ -42,6 +42,6 @@ class L330(VisaInstrument):
         return rng
     
     @range.write
-    def _set_range(self, value: int):
-        command = f":RANG {value}"
+    def _set_range(self, range: Ranges):
+        command = f":RANG {range.value}"
         self.resource.write(command)
